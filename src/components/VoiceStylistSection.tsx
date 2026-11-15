@@ -238,10 +238,15 @@ export function VoiceStylistSection({
         setMicAvailable(false);
       }
 
-      const ws = new WebSocket(getLiveWebSocketUrl(window.location));
+      const ws = new WebSocket(
+        getLiveWebSocketUrl(window.location, import.meta.env.VITE_LIVE_WS_URL),
+      );
       wsRef.current = ws;
 
+      let opened = false;
+
       ws.onopen = () => {
+        opened = true;
         ws.send(
           JSON.stringify({
             type: 'start',
@@ -305,7 +310,11 @@ export function VoiceStylistSection({
       };
 
       ws.onerror = () => {
-        setErrorMessage('Unable to connect to the live voice stylist.');
+        setErrorMessage(
+          opened
+            ? 'Unable to connect to the live voice stylist.'
+            : 'Real-time voice streaming requires a WebSocket-enabled server; flat-lay styling, palette analysis, and prompt editing remain available.',
+        );
         setStatus('error');
         cleanupResources(false);
       };

@@ -31,7 +31,7 @@ test('normalizeVoiceName falls back to Zephyr for unknown values', () => {
   assert.equal(normalizeVoiceName('UnknownVoice'), 'Zephyr');
 });
 
-test('getLiveWebSocketUrl uses wss for https and ws for http', () => {
+test('getLiveWebSocketUrl uses wss for https and ws for http, or respects custom override', () => {
   assert.equal(
     getLiveWebSocketUrl({ protocol: 'https:', host: 'example.com' }),
     'wss://example.com/live',
@@ -39,6 +39,13 @@ test('getLiveWebSocketUrl uses wss for https and ws for http', () => {
   assert.equal(
     getLiveWebSocketUrl({ protocol: 'http:', host: 'localhost:3000' }),
     'ws://localhost:3000/live',
+  );
+  assert.equal(
+    getLiveWebSocketUrl(
+      { protocol: 'https:', host: 'app.vercel.app' },
+      'wss://ws.example.com/live',
+    ),
+    'wss://ws.example.com/live',
   );
 });
 

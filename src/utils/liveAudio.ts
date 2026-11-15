@@ -94,7 +94,14 @@ export function buildStylistLiveContextSummary(
     .join(' ');
 }
 
-export function getLiveWebSocketUrl(loc: { protocol: string; host: string }): string {
+export function getLiveWebSocketUrl(
+  loc: { protocol: string; host: string },
+  overrideUrl?: string,
+): string {
+  const custom = typeof overrideUrl === 'string' ? overrideUrl.trim() : '';
+  if (custom) {
+    return custom;
+  }
   const wsProtocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${wsProtocol}//${loc.host}/live`;
 }

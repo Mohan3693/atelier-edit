@@ -1,5 +1,5 @@
 import express from 'express';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
   deleteSavedOutfitSql,
   listSavedOutfitsSql,
@@ -252,6 +252,9 @@ export function createApiApp(): express.Express {
             'Return precise, stylish, wearable outfit guidance grounded in color harmony and textile contrast. Never include markdown outside JSON.',
           responseMimeType: 'application/json',
           responseSchema: ANALYSIS_SCHEMA,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
         },
       });
 

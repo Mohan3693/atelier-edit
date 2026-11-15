@@ -10,7 +10,7 @@ export interface AnalyzeResponse {
 
 export async function fileToResizedDataUrl(
   file: File,
-  maxDimension = 1280,
+  maxDimension = 1024,
 ): Promise<string> {
   const rawDataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -30,7 +30,7 @@ export async function fileToResizedDataUrl(
 
 export async function urlToDataUrl(
   url: string,
-  maxDimension = 1280,
+  maxDimension = 1024,
 ): Promise<string> {
   if (parseDataUrl(url)) {
     return resizeDataUrlIfNeeded(url, maxDimension);
@@ -66,21 +66,25 @@ async function resizeDataUrlIfNeeded(
     const img = new Image();
     img.onload = () => {
       const { naturalWidth, naturalHeight } = img;
-      if (naturalWidth <= maxDimension && naturalHeight <= maxDimension) {
+      const needsResize = naturalWidth > maxDimension || naturalHeight > maxDimension;
+      const needsCompression = dataUrl.length > 500_000;
+      if (!needsResize && !needsCompression) {
         resolve(dataUrl);
         return;
       }
-      const scale = Math.min(maxDimension / naturalWidth, maxDimension / naturalHeight);
+      const scale = needsResize
+        ? Math.min(maxDimension / naturalWidth, maxDimension / naturalHeight)
+        : 1;
       const canvas = document.createElement('canvas');
-      canvas.width = Math.round(naturalWidth * scale);
-      canvas.height = Math.round(naturalHeight * scale);
+      canvas.width = Math.max(1, Math.round(naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(naturalHeight * scale));
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         resolve(dataUrl);
         return;
       }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.9));
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
@@ -100,6 +104,13 @@ export class ApiRequestError extends Error {
 }
 
 async function readErrorPayload(response: Response, fallback: string) {
+  if (response.status === 504) {
+    return {
+      error:
+        'The styling model took too long to respond (HTTP 504). Please try again or use a smaller photo.',
+      requiresPaidKey: false,
+    };
+  }
   const text = await response.text().catch(() => '');
   try {
     const parsed = JSON.parse(text) as { error?: string; requiresPaidKey?: boolean };

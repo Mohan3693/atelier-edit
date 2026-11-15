@@ -58,6 +58,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'uid',
+          'preferredGender',
           'preferredSeason',
           'preferredAesthetic',
           'preferredVoice',
@@ -67,6 +68,9 @@ service cloud.firestore {
         && isValidId(data.uid)
         && data.uid == userId
         && data.uid == request.auth.uid
+        && (!('preferredGender' in data) || (
+          data.preferredGender is string && data.preferredGender in ['male', 'female', 'unisex']
+        ))
         && data.preferredSeason is string
         && data.preferredSeason in ['All-Season', 'Spring / Summer', 'Autumn / Winter']
         && data.preferredAesthetic is string
@@ -74,6 +78,56 @@ service cloud.firestore {
         && data.preferredAesthetic.size() <= 64
         && data.preferredVoice is string
         && data.preferredVoice in ['Zephyr', 'Kore', 'Puck', 'Charon', 'Fenrir']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWardrobeItemDoc(data, userId, itemId) {
+      return data.keys().hasAll([
+          'id',
+          'uid',
+          'gender',
+          'category',
+          'label',
+          'colorName',
+          'colorHex',
+          'imageDataUrl',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'uid',
+          'gender',
+          'category',
+          'label',
+          'colorName',
+          'colorHex',
+          'imageDataUrl',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == itemId
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.gender is string && data.gender in ['male', 'female', 'unisex']
+        && data.category is string && data.category in [
+          'tops',
+          'bottoms',
+          'dresses',
+          'outerwear',
+          'shoes',
+          'bags',
+          'watches',
+          'eyewear',
+          'accessories'
+        ]
+        && data.label is string && data.label.size() >= 1 && data.label.size() <= 120
+        && data.colorName is string && data.colorName.size() >= 1 && data.colorName.size() <= 60
+        && data.colorHex is string && data.colorHex.size() >= 4 && data.colorHex.size() <= 16
+        && data.imageDataUrl is string && data.imageDataUrl.size() >= 10 && data.imageDataUrl.size() <= 180000
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -202,12 +256,40 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly([
+          'preferredGender',
           'preferredSeason',
           'preferredAesthetic',
           'preferredVoice',
           'updatedAt'
         ]);
       allow delete: if isVerifiedOwner(userId) && isValidId(prefId);
+    }
+
+    match /users/{userId}/wardrobeItems/{itemId} {
+      allow get: if isVerifiedOwner(userId) && isValidId(itemId);
+      allow list: if isVerifiedOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedOwner(userId)
+        && isValidId(itemId)
+        && isValidWardrobeItemDoc(incoming(), userId, itemId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedOwner(userId)
+        && isValidId(itemId)
+        && isValidWardrobeItemDoc(incoming(), userId, itemId)
+        && incoming().id == existing().id
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'gender',
+          'category',
+          'label',
+          'colorName',
+          'colorHex',
+          'imageDataUrl',
+          'updatedAt'
+        ]);
+      allow delete: if isVerifiedOwner(userId) && isValidId(itemId);
     }
 
     match /users/{userId}/savedLooks/{lookId} {

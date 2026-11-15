@@ -1,4 +1,11 @@
-import type { ItemAnalysis, OccasionType, OutfitOption, SavedLook } from '../types/stylist';
+import type {
+  ItemAnalysis,
+  OccasionType,
+  OutfitOption,
+  SavedLook,
+  WardrobeCategoryId,
+  WardrobeGender,
+} from '../types/stylist';
 import { parseDataUrl } from './stylist';
 
 export interface AnalyzeResponse {
@@ -107,7 +114,7 @@ async function readErrorPayload(response: Response, fallback: string) {
   if (response.status === 504) {
     return {
       error:
-        'The styling model took too long to respond (HTTP 504). Please try again or use a smaller photo.',
+        'The styling model took too long to respond (HTTP 504). Please try again with fewer or smaller photos.',
       requiresPaidKey: false,
     };
   }
@@ -124,6 +131,35 @@ async function readErrorPayload(response: Response, fallback: string) {
       requiresPaidKey: false,
     };
   }
+}
+
+export async function composeClosetOutfitsApi(params: {
+  gender: WardrobeGender;
+  season: string;
+  aesthetic: string;
+  anchorItemId?: string;
+  items: Array<{
+    id: string;
+    category: WardrobeCategoryId;
+    label: string;
+    imageDataUrl: string;
+  }>;
+}): Promise<AnalyzeResponse> {
+  const response = await fetch('/api/style/compose-closet', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errPayload = await readErrorPayload(response, 'Failed to style closet outfits.');
+    throw new ApiRequestError(
+      errPayload.error,
+      response.status,
+      errPayload.requiresPaidKey,
+    );
+  }
+  return (await response.json()) as AnalyzeResponse;
 }
 
 export async function analyzeGarmentApi(params: {

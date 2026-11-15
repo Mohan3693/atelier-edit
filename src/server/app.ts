@@ -74,7 +74,7 @@ export function classifyGeminiError(err: unknown): {
       status: 429,
       requiresPaidKey: true,
       message:
-        'Image generation with gemini-nano-banana-2.1 requires a billing-enabled Gemini API key in Settings > Secrets (quota exceeded on current tier).',
+        'Flat-lay image generation requires a billing-enabled Gemini API key or hit your current quota limit.',
     };
   }
 
@@ -88,7 +88,7 @@ export function classifyGeminiError(err: unknown): {
       status: 403,
       requiresPaidKey: true,
       message:
-        'Please check or select a valid Gemini API key in Settings > Secrets to run this model.',
+        'Invalid or unauthorized GEMINI_API_KEY. Verify your API key and billing status.',
     };
   }
 
@@ -186,12 +186,295 @@ const ANALYSIS_SCHEMA = {
   required: ['itemAnalysis', 'outfits'],
 };
 
+const CLOSET_COMPOSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    itemAnalysis: ANALYSIS_SCHEMA.properties.itemAnalysis,
+    outfits: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          occasion: { type: Type.STRING },
+          title: { type: Type.STRING },
+          moodSummary: { type: Type.STRING },
+          colorHarmonyNote: { type: Type.STRING },
+          colorPaletteCategory: { type: Type.STRING },
+          missingNote: { type: Type.STRING },
+          pieces: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                wardrobeItemId: { type: Type.STRING },
+                slot: { type: Type.STRING },
+                name: { type: Type.STRING },
+                colorName: { type: Type.STRING },
+                colorHex: { type: Type.STRING },
+                material: { type: Type.STRING },
+                stylingTip: { type: Type.STRING },
+              },
+              required: [
+                'wardrobeItemId',
+                'slot',
+                'name',
+                'colorName',
+                'colorHex',
+                'material',
+                'stylingTip',
+              ],
+            },
+          },
+        },
+        required: [
+          'occasion',
+          'title',
+          'moodSummary',
+          'colorHarmonyNote',
+          'colorPaletteCategory',
+          'missingNote',
+          'pieces',
+        ],
+      },
+    },
+  },
+  required: ['itemAnalysis', 'outfits'],
+};
+
 export function createApiApp(): express.Express {
   const app = express();
   app.use(express.json({ limit: '20mb' }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  app.post('/api/style/compose-closet', async (req, res) => {
+    const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const validItems: Array<{
+      id: string;
+      category: string;
+      label: string;
+      parsed: { mimeType: string; data: string };
+    }> = [];
+
+    for (const raw of rawItems.slice(0, 24)) {
+      if (!raw || typeof raw.id !== 'string') continue;
+      const parsed = parseImageDataUrl(raw.imageDataUrl);
+      if (!parsed) continue;
+      validItems.push({
+        id: raw.id.trim().slice(0, 128),
+        category:
+          typeof raw.category === 'string' && raw.category.trim()
+            ? raw.category.trim().slice(0, 40)
+            : 'tops',
+        label:
+          typeof raw.label === 'string' && raw.label.trim()
+            ? raw.label.trim().slice(0, 120)
+            : 'Wardrobe Item',
+        parsed,
+      });
+    }
+
+    if (validItems.length < 2) {
+      res.status(400).json({
+        error: 'Upload at least 2 valid wardrobe photos (for example a top and bottoms or shoes) to compose outfits.',
+      });
+      return;
+    }
+
+    const ai = getAiClient();
+    if (!ai) {
+      res.status(503).json({
+        error: 'GEMINI_API_KEY is not configured in environment variables.',
+        requiresPaidKey: false,
+      });
+      return;
+    }
+
+    const gender =
+      req.body?.gender === 'male' || req.body?.gender === 'female'
+        ? req.body.gender
+        : 'unisex';
+    const season =
+      typeof req.body?.season === 'string' && req.body.season.trim()
+        ? req.body.season.trim()
+        : 'All-Season';
+    const aesthetic =
+      typeof req.body?.aesthetic === 'string' && req.body.aesthetic.trim()
+        ? req.body.aesthetic.trim()
+        : 'Modern Editorial';
+    const anchorItemId =
+      typeof req.body?.anchorItemId === 'string' &&
+      validItems.some((item) => item.id === req.body.anchorItemId)
+        ? req.body.anchorItemId
+        : null;
+
+    try {
+      const parts: Array<
+        { text: string } | { inlineData: { mimeType: string; data: string } }
+      > = [];
+
+      for (const item of validItems) {
+        parts.push({
+          text: `WARDROBE ITEM -> id="${item.id}" | category="${item.category}" | label="${item.label}"`,
+        });
+        parts.push({
+          inlineData: {
+            mimeType: item.parsed.mimeType,
+            data: item.parsed.data,
+          },
+        });
+      }
+
+      const genderLabel =
+        gender === 'male' ? 'Menswear (Male)' : gender === 'female' ? 'Womenswear (Female)' : 'Unisex / Mixed';
+
+      const prompt = [
+        'You are a luxury personal stylist curating outfits strictly from a client’s REAL uploaded wardrobe.',
+        `Client Profile: Gender = ${genderLabel}, Season = ${season}, Preferred Aesthetic = ${aesthetic}.`,
+        anchorItemId
+          ? `Required Anchor Item: You MUST include item id="${anchorItemId}" in all 3 outfits.`
+          : 'You may mix and match across all uploaded items so the 3 outfits feel genuinely distinct.',
+        '',
+        'STRICT RULES:',
+        '1. Create exactly 3 complete outfits in order for occasions: "Casual", "Business", and "Night Out".',
+        '2. EVERY piece in every outfit’s `pieces` array MUST use an exact `wardrobeItemId` from the uploaded WARDROBE ITEM list above. NEVER invent, imagine, or add any garment, shoe, bag, watch, or accessory that the client did not upload.',
+        '3. Whenever the client uploaded items across clothing (tops, dresses, outerwear, bottoms) AND accessories (shoes, bags, watches, eyewear/specs, accessories), assemble cohesive full-body looks combining clothing + shoes + bag/watch/specs.',
+        '4. Never repeat the same `wardrobeItemId` twice inside the same outfit.',
+        '5. Identify exact hex colors (#RRGGBB) seen directly in the client’s real photos for `itemAnalysis.palette` and each selected piece.',
+        '6. Assign each outfit `colorPaletteCategory` as one of: "Monochromatic", "Complementary", "Neutral Tones", or "Analogous".',
+        '7. In `itemAnalysis.itemName`, give the client’s wardrobe capsule a refined editorial title (e.g. "Warm Neutral Menswear Capsule" or "Editorial Silk & Tailoring Edit").',
+        '8. If a key slot (such as Shoes or Outerwear) was not uploaded at all, mention it politely in `missingNote`; otherwise set `missingNote` to an empty string "".',
+      ].join('\n');
+
+      parts.push({ text: prompt });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: { parts },
+        config: {
+          systemInstruction:
+            'Compose 3 stylish, practical outfits strictly from the exact uploaded wardrobeItemId values provided. Never invent unuploaded items. Return JSON only.',
+          responseMimeType: 'application/json',
+          responseSchema: CLOSET_COMPOSE_SCHEMA,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
+        },
+      });
+
+      const rawText = response.text?.trim();
+      if (!rawText) {
+        res.status(502).json({ error: 'Closet styling returned an empty response.' });
+        return;
+      }
+
+      const parsedJson = JSON.parse(rawText) as {
+        itemAnalysis: Record<string, unknown>;
+        outfits: Array<{
+          occasion?: string;
+          title?: string;
+          moodSummary?: string;
+          colorHarmonyNote?: string;
+          colorPaletteCategory?: string;
+          missingNote?: string;
+          pieces?: Array<{
+            wardrobeItemId?: string;
+            slot?: string;
+            name?: string;
+            colorName?: string;
+            colorHex?: string;
+            material?: string;
+            stylingTip?: string;
+          }>;
+        }>;
+      };
+
+      const itemById = new Map(validItems.map((i) => [i.id, i]));
+      const sanitizedOutfits = (parsedJson.outfits ?? []).slice(0, 3).map((outfit, idx) => {
+        const seen = new Set<string>();
+        const cleanPieces = (outfit.pieces ?? []).filter((p) => {
+          if (!p.wardrobeItemId || !itemById.has(p.wardrobeItemId)) return false;
+          if (seen.has(p.wardrobeItemId)) return false;
+          seen.add(p.wardrobeItemId);
+          return true;
+        });
+
+        if (anchorItemId && itemById.has(anchorItemId) && !seen.has(anchorItemId)) {
+          const anchor = itemById.get(anchorItemId)!;
+          seen.add(anchor.id);
+          cleanPieces.unshift({
+            wardrobeItemId: anchor.id,
+            slot: anchor.category,
+            name: anchor.label,
+            colorName: 'Uploaded Shade',
+            colorHex: '#4A4945',
+            material: 'Uploaded piece',
+            stylingTip: 'Featured anchor piece from your wardrobe.',
+          });
+        }
+
+        if (cleanPieces.length < 2) {
+          for (const fallbackItem of validItems) {
+            if (seen.has(fallbackItem.id)) continue;
+            seen.add(fallbackItem.id);
+            cleanPieces.push({
+              wardrobeItemId: fallbackItem.id,
+              slot: fallbackItem.category,
+              name: fallbackItem.label,
+              colorName: 'Tonal Match',
+              colorHex: '#4A4945',
+              material: 'Your wardrobe piece',
+              stylingTip: 'Paired from your uploaded collection.',
+            });
+            if (cleanPieces.length >= Math.min(4, validItems.length)) break;
+          }
+        }
+
+        return {
+          occasion:
+            outfit.occasion === 'Business' || outfit.occasion === 'Night Out'
+              ? outfit.occasion
+              : idx === 1
+                ? 'Business'
+                : idx === 2
+                  ? 'Night Out'
+                  : 'Casual',
+          title: outfit.title || `Curated Look 0${idx + 1}`,
+          moodSummary: outfit.moodSummary || 'Styled exclusively from your uploaded wardrobe.',
+          colorHarmonyNote:
+            outfit.colorHarmonyNote || 'Balanced tones across your uploaded garments and accessories.',
+          colorPaletteCategory: outfit.colorPaletteCategory || 'Neutral Tones',
+          missingNote: typeof outfit.missingNote === 'string' ? outfit.missingNote : '',
+          flatLayPrompt: '',
+          pieces: cleanPieces.map((p) => {
+            const source = itemById.get(p.wardrobeItemId!)!;
+            return {
+              wardrobeItemId: source.id,
+              category: source.category,
+              slot: p.slot || source.category,
+              name: p.name || source.label,
+              colorName: p.colorName || 'Neutral',
+              colorHex: p.colorHex || '#4A4945',
+              material: p.material || 'Uploaded garment',
+              stylingTip: p.stylingTip || 'Styled together from your closet.',
+            };
+          }),
+        };
+      });
+
+      res.json({
+        itemAnalysis: parsedJson.itemAnalysis,
+        outfits: sanitizedOutfits,
+      });
+    } catch (err) {
+      const classified = classifyGeminiError(err);
+      res.status(classified.status).json({
+        error: classified.message,
+        requiresPaidKey: classified.requiresPaidKey,
+      });
+    }
   });
 
   app.post('/api/style/analyze', async (req, res) => {

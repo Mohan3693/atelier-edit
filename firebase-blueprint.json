@@ -40,7 +40,7 @@
     },
     "UserStylePreference": {
       "title": "UserStylePreference",
-      "description": "User styling defaults and preferred voice stylist persona.",
+      "description": "User styling defaults, wardrobe gender profile, and preferred voice stylist persona.",
       "type": "object",
       "properties": {
         "uid": {
@@ -49,6 +49,11 @@
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$",
           "description": "Owner Firebase UID."
+        },
+        "preferredGender": {
+          "type": "string",
+          "enum": ["male", "female", "unisex"],
+          "description": "Wardrobe profile gender filter (Menswear, Womenswear, or Unisex)."
         },
         "preferredSeason": {
           "type": "string",
@@ -82,6 +87,93 @@
         "preferredSeason",
         "preferredAesthetic",
         "preferredVoice",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WardrobeItemDoc": {
+      "title": "WardrobeItemDoc",
+      "description": "Individual garment, shoe, bag, watch, or eyewear item stored in the user's digital closet.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique wardrobe item ID matching the document ID."
+        },
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner Firebase UID."
+        },
+        "gender": {
+          "type": "string",
+          "enum": ["male", "female", "unisex"],
+          "description": "Wardrobe gender profile for the item."
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "tops",
+            "bottoms",
+            "dresses",
+            "outerwear",
+            "shoes",
+            "bags",
+            "watches",
+            "eyewear",
+            "accessories"
+          ],
+          "description": "Wardrobe category slot."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "User-facing item name or description."
+        },
+        "colorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Primary color label."
+        },
+        "colorHex": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16,
+          "description": "Normalized hex color code."
+        },
+        "imageDataUrl": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 180000,
+          "description": "Compact compressed JPEG/WebP thumbnail or asset URL for cross-device closet sync."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "uid",
+        "gender",
+        "category",
+        "label",
+        "colorName",
+        "colorHex",
+        "imageDataUrl",
         "createdAt",
         "updatedAt"
       ]
@@ -278,7 +370,13 @@
       "schema": {
         "$ref": "#/entities/UserStylePreference"
       },
-      "description": "Owner-only default styling and voice preferences."
+      "description": "Owner-only default styling, gender profile, and voice preferences."
+    },
+    "/users/{userId}/wardrobeItems/{itemId}": {
+      "schema": {
+        "$ref": "#/entities/WardrobeItemDoc"
+      },
+      "description": "Owner-only uploaded closet garments, shoes, bags, watches, and eyewear items."
     },
     "/users/{userId}/savedLooks/{lookId}": {
       "schema": {

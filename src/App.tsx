@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Header } from './components/Header';
-import { GarmentIntake } from './components/GarmentIntake';
+import { MobileBottomNav, type AppSectionId } from './components/MobileBottomNav';
+import { ClosetStudio } from './components/ClosetStudio';
 import { AnalysisStrip } from './components/AnalysisStrip';
 import { OutfitGrid } from './components/OutfitGrid';
-import { CreateEditStudio } from './components/CreateEditStudio';
+import { MixMatchStudio } from './components/MixMatchStudio';
 import { VoiceStylistSection } from './components/VoiceStylistSection';
 import {
   SavedLooksSection,
@@ -14,47 +15,57 @@ import { useAuth } from './contexts/AuthContext';
 import { SAMPLE_WARDROBE } from './data/sampleWardrobe';
 import {
   deleteSavedLookInFirestore,
+  deleteWardrobeItemInFirestore,
   loadUserPreferencesFromFirestore,
   recordAnalysisInFirestore,
   saveUserPreferencesToFirestore,
   subscribeSavedLooksInFirestore,
+  subscribeWardrobeItemsInFirestore,
   syncUserProfileToFirestore,
   upsertSavedLookInFirestore,
+  upsertWardrobeItemInFirestore,
 } from './lib/firestoreLooks';
 import type {
   ItemAnalysis,
   OccasionType,
   OutfitOption,
-  SampleGarment,
   SavedLook,
+  WardrobeCategoryId,
+  WardrobeGender,
+  WardrobeItem,
 } from './types/stylist';
 import {
-  analyzeGarmentApi,
-  createOrEditImageApi,
+  composeClosetOutfitsApi,
   deleteSavedLookSqlApi,
   fetchWardrobeHistorySqlApi,
-  fileToResizedDataUrl,
-  generateFlatLayApi,
   recordAnalysisSqlApi,
   recordVoiceSessionSqlApi,
   syncUserSqlApi,
   upsertSavedLookSqlApi,
-  urlToDataUrl,
 } from './utils/api';
 import type { StylistVoiceName } from './utils/liveAudio';
 import {
-  buildFlatLayPrompt,
   getOutfitPaletteCategory,
   parseSavedLooksJson,
   SAVED_LOOKS_STORAGE_KEY,
   toggleSavedOutfit,
 } from './utils/stylist';
+import {
+  cleanFileLabel,
+  deleteClosetItemLocal,
+  getCategoryLabel,
+  loadClosetItemsLocal,
+  prepareWardrobeImagePair,
+  prepareWardrobeImagePairFromUrl,
+  resolveOutfitPiecesWithCloset,
+  saveClosetItemLocal,
+} from './utils/wardrobe';
+import { renderOutfitCollageDataUrl } from './utils/collageExport';
 import { exportOutfitsToPdf } from './utils/pdfExport';
 
-const FLAGSHIP_SAMPLE = SAMPLE_WARDROBE[0];
+const GENDER_STORAGE_KEY = 'atelier_edit_gender_v1';
 
 export default function App() {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
     user,
     loading: authLoading,
@@ -65,25 +76,22 @@ export default function App() {
     getIdToken,
   } = useAuth();
 
-  const [selectedImageUrl, setSelectedImageUrl] = useState<string>(FLAGSHIP_SAMPLE.imageUrl);
-  const [selectedImageLabel, setSelectedImageLabel] = useState<string>(FLAGSHIP_SAMPLE.name);
-  const [activeSampleId, setActiveSampleId] = useState<string | null>(FLAGSHIP_SAMPLE.id);
-
+  const [gender, setGender] = useState<WardrobeGender>(() => {
+    if (typeof window === 'undefined') return 'male';
+    const raw = window.localStorage.getItem(GENDER_STORAGE_KEY);
+    return raw === 'female' || raw === 'unisex' ? raw : 'male';
+  });
   const [season, setSeason] = useState<string>('All-Season');
   const [aesthetic, setAesthetic] = useState<string>('Modern Editorial');
   const [preferredVoice, setPreferredVoice] = useState<StylistVoiceName>('Zephyr');
 
-  const [analysis, setAnalysis] = useState<ItemAnalysis | null>(
-    FLAGSHIP_SAMPLE.precomputedAnalysis ?? null,
-  );
-  const [analysisImageUrl, setAnalysisImageUrl] = useState<string>(FLAGSHIP_SAMPLE.imageUrl);
-  const [outfits, setOutfits] = useState<OutfitOption[]>(
-    FLAGSHIP_SAMPLE.precomputedOutfits ?? [],
-  );
+  const [closetItems, setClosetItems] = useState<WardrobeItem[]>([]);
+  const [anchorItemId, setAnchorItemId] = useState<string | null>(null);
 
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [intakeError, setIntakeError] = useState<string | null>(null);
-  const [editingOutfitId, setEditingOutfitId] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<ItemAnalysis | null>(null);
+  const [outfits, setOutfits] = useState<OutfitOption[]>([]);
+  const [isComposing, setIsComposing] = useState<boolean>(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
   const [recentAnalyses, setRecentAnalyses] = useState<HistoryAnalysisEntry[]>([]);
 
   const [savedLooks, setSavedLooks] = useState<SavedLook[]>(() => {
@@ -95,6 +103,23 @@ export default function App() {
     outfit: OutfitOption;
     anchorItemName: string;
   } | null>(null);
+  const [activeSection, setActiveSection] = useState<AppSectionId>('style-studio');
+
+  useEffect(() => {
+    void loadClosetItemsLocal().then((localItems) => {
+      if (localItems.length > 0) {
+        setClosetItems(localItems);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(GENDER_STORAGE_KEY, gender);
+    } catch {
+      // Ignore storage errors
+    }
+  }, [gender]);
 
   useEffect(() => {
     try {
@@ -112,16 +137,44 @@ export default function App() {
 
     let cancelled = false;
     let unsubscribeLooks: (() => void) | null = null;
+    let unsubscribeCloset: (() => void) | null = null;
 
     const bootstrapUserData = async () => {
       try {
         await syncUserProfileToFirestore(user);
         const prefs = await loadUserPreferencesFromFirestore(user.uid);
         if (!cancelled && prefs) {
+          if (prefs.preferredGender) {
+            setGender(prefs.preferredGender);
+          }
           setSeason(prefs.preferredSeason);
           setAesthetic(prefs.preferredAesthetic);
           setPreferredVoice(prefs.preferredVoice);
         }
+
+        unsubscribeCloset = subscribeWardrobeItemsInFirestore(user.uid, (remoteItems) => {
+          if (cancelled || remoteItems.length === 0) return;
+          setClosetItems((prevLocal) => {
+            const merged = new Map<string, WardrobeItem>();
+            for (const remote of remoteItems) {
+              merged.set(remote.id, remote);
+            }
+            for (const local of prevLocal) {
+              const existingRemote = merged.get(local.id);
+              if (existingRemote) {
+                merged.set(local.id, {
+                  ...existingRemote,
+                  imageUrl: local.imageUrl || existingRemote.imageUrl,
+                });
+              } else {
+                merged.set(local.id, local);
+              }
+            }
+            return Array.from(merged.values()).sort((a, b) =>
+              (b.createdAt || '').localeCompare(a.createdAt || ''),
+            );
+          });
+        });
 
         unsubscribeLooks = subscribeSavedLooksInFirestore(user.uid, () => {
           // Real-time Firestore listener active for verified owner
@@ -159,7 +212,7 @@ export default function App() {
                     id: row.clientLookId,
                     savedAt: row.createdAt,
                     anchorItemName: row.anchorItemName,
-                    anchorImageUrl: row.anchorImageRef || FLAGSHIP_SAMPLE.imageUrl,
+                    anchorImageUrl: row.anchorImageRef || SAMPLE_WARDROBE[0].imageUrl,
                     palette: Array.isArray(row.paletteJson) ? row.paletteJson : [],
                     outfit: row.outfitJson,
                   });
@@ -179,10 +232,12 @@ export default function App() {
     return () => {
       cancelled = true;
       unsubscribeLooks?.();
+      unsubscribeCloset?.();
     };
   }, [user, getIdToken]);
 
   const persistUserPrefs = async (
+    nextGender: WardrobeGender,
     nextSeason: string,
     nextAesthetic: string,
     nextVoice: StylistVoiceName,
@@ -190,6 +245,7 @@ export default function App() {
     if (!user) return;
     try {
       await saveUserPreferencesToFirestore(user.uid, {
+        preferredGender: nextGender,
         preferredSeason:
           nextSeason === 'Spring / Summer' || nextSeason === 'Autumn / Winter'
             ? nextSeason
@@ -202,112 +258,213 @@ export default function App() {
     }
   };
 
-  const handleNavigateSection = (sectionId: string) => {
+  useEffect(() => {
+    const sectionIds: AppSectionId[] = [
+      'style-studio',
+      'outfit-looks',
+      'create-edit',
+      'voice-stylist',
+      'saved-looks',
+    ];
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const id = entry.target.id as AppSectionId;
+            if (sectionIds.includes(id)) {
+              setActiveSection(id);
+            }
+          }
+        }
+      },
+      { rootMargin: '-35% 0px -50% 0px', threshold: 0.01 },
+    );
+    for (const id of sectionIds) {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [outfits.length]);
+
+  const handleNavigateSection = (sectionId: AppSectionId) => {
+    setActiveSection(sectionId);
     const el = document.getElementById(sectionId);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
-  const handleTriggerUpload = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileSelected = async (file: File) => {
-    setIntakeError(null);
-    try {
-      const dataUrl = await fileToResizedDataUrl(file);
-      setSelectedImageUrl(dataUrl);
-      setSelectedImageLabel(file.name);
-      setActiveSampleId(null);
-    } catch (err) {
-      setIntakeError(
-        err instanceof Error ? err.message : 'Unable to read the selected image.',
-      );
-    }
-  };
-
-  const handleSelectSample = (sample: SampleGarment) => {
-    setIntakeError(null);
-    setSelectedImageUrl(sample.imageUrl);
-    setSelectedImageLabel(sample.name);
-    setActiveSampleId(sample.id);
-
-    if (sample.precomputedAnalysis && sample.precomputedOutfits) {
-      setAnalysis(sample.precomputedAnalysis);
-      setAnalysisImageUrl(sample.imageUrl);
-      setOutfits(sample.precomputedOutfits);
-    }
-  };
-
-  const generateFlatLayForOutfit = async (
-    outfit: OutfitOption,
-    anchorDataUrl: string,
-    itemAnalysis: ItemAnalysis,
+  const handleUploadFilesToCategory = async (
+    files: FileList | File[],
+    category: WardrobeCategoryId,
   ) => {
-    setOutfits((prev) =>
-      prev.map((o) =>
-        o.id === outfit.id
-          ? { ...o, flatLayStatus: 'loading', flatLayError: undefined }
-          : o,
-      ),
-    );
+    setComposeError(null);
+    const fileArray = Array.from(files);
+    const created: WardrobeItem[] = [];
 
-    try {
-      const prompt = buildFlatLayPrompt(itemAnalysis, outfit);
-      const res = await generateFlatLayApi({
-        imageDataUrl: anchorDataUrl,
-        flatLayPrompt: prompt,
-        occasion: outfit.occasion,
-        aspectRatio: '3:4',
-        imageSize: '1K',
-      });
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      try {
+        const pair = await prepareWardrobeImagePair(file);
+        const item: WardrobeItem = {
+          id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${i}`,
+          gender,
+          category,
+          label: cleanFileLabel(file.name, getCategoryLabel(category, gender)),
+          imageUrl: pair.imageUrl,
+          syncThumbnailUrl: pair.syncThumbnailUrl,
+          colorName: 'Uploaded',
+          colorHex: pair.colorHex,
+          createdAt: new Date().toISOString(),
+        };
+        created.push(item);
+        await saveClosetItemLocal(item);
+        if (user) {
+          void upsertWardrobeItemInFirestore(user.uid, item).catch(() => {});
+        }
+      } catch (err) {
+        setComposeError(
+          err instanceof Error ? err.message : 'Unable to process one of the selected photos.',
+        );
+      }
+    }
 
-      setOutfits((prev) =>
-        prev.map((o) =>
-          o.id === outfit.id
-            ? {
-                ...o,
-                flatLayImageUrl: res.imageUrl,
-                flatLayStatus: 'ready',
-                flatLayError: undefined,
-              }
-            : o,
-        ),
-      );
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Flat-lay photo generation is unavailable right now.';
-      setOutfits((prev) =>
-        prev.map((o) =>
-          o.id === outfit.id
-            ? {
-                ...o,
-                flatLayStatus: 'error',
-                flatLayError: message,
-              }
-            : o,
-        ),
-      );
+    if (created.length > 0) {
+      setClosetItems((prev) => [...created, ...prev]);
     }
   };
 
-  const runAnalysisForImage = async (targetImageUrl: string) => {
-    setIntakeError(null);
-    setIsAnalyzing(true);
+  const handleUpdateItemLabel = (itemId: string, label: string) => {
+    let updated: WardrobeItem | undefined;
+    setClosetItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        updated = { ...item, label };
+        return updated;
+      }),
+    );
+    if (updated) {
+      void saveClosetItemLocal(updated);
+      if (user) {
+        void upsertWardrobeItemInFirestore(user.uid, updated).catch(() => {});
+      }
+    }
+  };
+
+  const handleMoveItemCategory = (itemId: string, category: WardrobeCategoryId) => {
+    let updated: WardrobeItem | undefined;
+    setClosetItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        updated = { ...item, category };
+        return updated;
+      }),
+    );
+    if (updated) {
+      void saveClosetItemLocal(updated);
+      if (user) {
+        void upsertWardrobeItemInFirestore(user.uid, updated).catch(() => {});
+      }
+    }
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    setClosetItems((prev) => prev.filter((item) => item.id !== itemId));
+    if (anchorItemId === itemId) setAnchorItemId(null);
+    void deleteClosetItemLocal(itemId);
+    if (user) {
+      void deleteWardrobeItemInFirestore(user.uid, itemId).catch(() => {});
+    }
+  };
+
+  const handleLoadStarterCloset = async () => {
+    setComposeError(null);
+    const starterSpecs: Array<{
+      label: string;
+      category: WardrobeCategoryId;
+      imageUrl: string;
+    }> = [
+      {
+        label: 'Emerald Silk Slip Dress',
+        category: 'dresses',
+        imageUrl: SAMPLE_WARDROBE[1].imageUrl,
+      },
+      {
+        label: 'Rust Houndstooth Wool Blazer',
+        category: 'outerwear',
+        imageUrl: SAMPLE_WARDROBE[2].imageUrl,
+      },
+      {
+        label: 'Botanical Jacquard Midi Skirt',
+        category: 'bottoms',
+        imageUrl: SAMPLE_WARDROBE[0].imageUrl,
+      },
+    ];
+
+    if (gender === 'male') {
+      setGender('unisex');
+    }
+
+    const added: WardrobeItem[] = [];
+    for (let i = 0; i < starterSpecs.length; i++) {
+      const spec = starterSpecs[i];
+      try {
+        const pair = await prepareWardrobeImagePairFromUrl(spec.imageUrl);
+        const item: WardrobeItem = {
+          id: `starter-${Date.now()}-${i}`,
+          gender: 'unisex',
+          category: spec.category,
+          label: spec.label,
+          imageUrl: pair.imageUrl,
+          syncThumbnailUrl: pair.syncThumbnailUrl,
+          colorName: 'Curated',
+          colorHex: pair.colorHex,
+          createdAt: new Date().toISOString(),
+        };
+        added.push(item);
+        await saveClosetItemLocal(item);
+        if (user) {
+          void upsertWardrobeItemInFirestore(user.uid, item).catch(() => {});
+        }
+      } catch {
+        // Ignore single sample asset error
+      }
+    }
+
+    if (added.length > 0) {
+      setClosetItems((prev) => [...added, ...prev]);
+    }
+  };
+
+  const handleGenerateOutfitsFromCloset = async () => {
+    if (closetItems.length < 2) {
+      setComposeError('Upload at least 2 wardrobe items across your categories first.');
+      return;
+    }
+
+    setComposeError(null);
+    setIsComposing(true);
 
     try {
-      const anchorDataUrl = await urlToDataUrl(targetImageUrl);
-      const analyzed = await analyzeGarmentApi({
-        imageDataUrl: anchorDataUrl,
+      // Keep payload fast and safely under Vercel 4.5MB limit by sending compact 360px sync thumbnails
+      const payloadItems = closetItems.slice(0, 20).map((item) => ({
+        id: item.id,
+        category: item.category,
+        label: item.label,
+        imageDataUrl: item.syncThumbnailUrl || item.imageUrl,
+      }));
+
+      const result = await composeClosetOutfitsApi({
+        gender,
         season,
         aesthetic,
+        anchorItemId: anchorItemId ?? undefined,
+        items: payloadItems,
       });
 
       const batchStamp = Date.now();
-      const normalizedOutfits: OutfitOption[] = analyzed.outfits.slice(0, 3).map((item, idx) => {
+      const hydratedOutfits: OutfitOption[] = result.outfits.slice(0, 3).map((item, idx) => {
         const occasion: OccasionType =
           item.occasion === 'Business' || item.occasion === 'Night Out'
             ? item.occasion
@@ -316,31 +473,31 @@ export default function App() {
               : idx === 2
                 ? 'Night Out'
                 : 'Casual';
+        const resolvedPieces = resolveOutfitPiecesWithCloset(item.pieces, closetItems);
         return {
           ...item,
           occasion,
+          pieces: resolvedPieces,
           colorPaletteCategory: getOutfitPaletteCategory(
-            item,
-            analyzed.itemAnalysis.palette,
+            { ...item, pieces: resolvedPieces },
+            result.itemAnalysis.palette,
           ),
           id: `look-${occasion.toLowerCase().replace(/\s+/g, '-')}-${batchStamp}-${idx}`,
           flatLayImageUrl: null,
-          flatLayStatus: 'loading',
+          flatLayStatus: 'ready',
           editHistory: [],
         };
       });
 
-      setAnalysis(analyzed.itemAnalysis);
-      setAnalysisImageUrl(targetImageUrl);
-      setOutfits(normalizedOutfits);
-      setIsAnalyzing(false);
+      setAnalysis(result.itemAnalysis);
+      setOutfits(hydratedOutfits);
 
       if (user) {
         const analysisId = `analysis-${batchStamp}`;
         void recordAnalysisInFirestore(
           user.uid,
           analysisId,
-          analyzed.itemAnalysis,
+          result.itemAnalysis,
           season,
           aesthetic,
         ).catch(() => {});
@@ -349,8 +506,8 @@ export default function App() {
           if (!token) return;
           try {
             await recordAnalysisSqlApi(token, {
-              analysis: analyzed.itemAnalysis,
-              outfits: normalizedOutfits,
+              analysis: result.itemAnalysis,
+              outfits: hydratedOutfits,
               season,
               aesthetic,
             });
@@ -369,7 +526,7 @@ export default function App() {
               })),
             );
           } catch {
-            // Non-blocking sync
+            // Non-blocking SQL sync
           }
         });
       }
@@ -377,47 +534,77 @@ export default function App() {
       setTimeout(() => {
         handleNavigateSection('outfit-looks');
       }, 120);
-
-      await Promise.all(
-        normalizedOutfits.map((outfit) =>
-          generateFlatLayForOutfit(outfit, anchorDataUrl, analyzed.itemAnalysis),
-        ),
-      );
     } catch (err) {
-      setIsAnalyzing(false);
-      setIntakeError(
+      setComposeError(
         err instanceof Error
           ? err.message
-          : 'Could not analyze the uploaded garment. Please try again.',
+          : 'Could not compose outfits from your closet. Please try again.',
       );
+    } finally {
+      setIsComposing(false);
     }
   };
 
-  const handleGenerateLooks = async () => {
-    if (!selectedImageUrl) {
-      setIntakeError('Please upload a garment photo or pick a sample item first.');
-      return;
-    }
-    await runAnalysisForImage(selectedImageUrl);
+  const handleSwapPiece = (outfitId: string, pieceIndex: number, nextItemId: string) => {
+    const nextItem = closetItems.find((i) => i.id === nextItemId);
+    if (!nextItem) return;
+
+    setOutfits((prev) =>
+      prev.map((outfit) => {
+        if (outfit.id !== outfitId) return outfit;
+        const nextPieces = outfit.pieces.map((p, idx) =>
+          idx === pieceIndex
+            ? {
+                ...p,
+                wardrobeItemId: nextItem.id,
+                category: nextItem.category,
+                imageUrl: nextItem.imageUrl,
+                name: nextItem.label,
+                colorHex: nextItem.colorHex,
+                colorName: nextItem.colorName,
+              }
+            : p,
+        );
+        return {
+          ...outfit,
+          pieces: nextPieces,
+          flatLayImageUrl: null,
+        };
+      }),
+    );
   };
 
-  const handleRefreshAllOutfits = async () => {
-    const targetUrl = analysisImageUrl || selectedImageUrl;
-    if (!targetUrl) return;
-    await runAnalysisForImage(targetUrl);
+  const getRepresentativeAnchorImage = (): string => {
+    if (anchorItemId) {
+      const pinned = closetItems.find((i) => i.id === anchorItemId);
+      if (pinned) return pinned.imageUrl;
+    }
+    if (closetItems[0]) return closetItems[0].imageUrl;
+    return SAMPLE_WARDROBE[0].imageUrl;
   };
 
   const handleExportAllToPdf = async (
     visibleOutfits: OutfitOption[],
   ): Promise<{ ok: boolean; message: string }> => {
     if (!analysis || visibleOutfits.length === 0) {
-      return { ok: false, message: 'No outfits available to export.' };
+      return { ok: false, message: 'Generate outfits from your closet before exporting PDF.' };
     }
     try {
+      const outfitsWithCollages = await Promise.all(
+        visibleOutfits.map(async (outfit) => {
+          if (outfit.flatLayImageUrl) return outfit;
+          const rendered = await renderOutfitCollageDataUrl(outfit, closetItems);
+          return {
+            ...outfit,
+            flatLayImageUrl: rendered || null,
+          };
+        }),
+      );
+
       const result = await exportOutfitsToPdf({
         analysis,
-        anchorImageUrl: analysisImageUrl,
-        outfits: visibleOutfits,
+        anchorImageUrl: getRepresentativeAnchorImage(),
+        outfits: outfitsWithCollages,
       });
       return {
         ok: true,
@@ -432,82 +619,38 @@ export default function App() {
     }
   };
 
-  const handleRetryFlatLay = async (outfitId: string) => {
-    const target = outfits.find((o) => o.id === outfitId);
-    if (!target || !analysis) return;
-    try {
-      const anchorDataUrl = await urlToDataUrl(analysisImageUrl);
-      await generateFlatLayForOutfit(target, anchorDataUrl, analysis);
-    } catch (err) {
-      setOutfits((prev) =>
-        prev.map((o) =>
-          o.id === outfitId
-            ? {
-                ...o,
-                flatLayStatus: 'error',
-                flatLayError:
-                  err instanceof Error ? err.message : 'Unable to retry photo.',
-              }
-            : o,
-        ),
-      );
-    }
-  };
+  const handleToggleSave = async (outfit: OutfitOption) => {
+    const capsuleAnalysis: ItemAnalysis = analysis ?? {
+      itemName: 'Personal Closet Look',
+      category: gender === 'male' ? 'Menswear' : gender === 'female' ? 'Womenswear' : 'Closet Edit',
+      silhouette: 'Custom Closet Pairing',
+      fabricAndTexture: 'Personal Wardrobe',
+      patternDescription: 'Curated from your uploaded pieces',
+      stylePersonality: aesthetic,
+      stylingStrategy: 'Styled from your stored items.',
+      palette: outfit.pieces.slice(0, 4).map((p, i) => ({
+        name: p.colorName,
+        hex: p.colorHex,
+        role: i === 0 ? 'Primary' : 'Neutral',
+      })),
+    };
 
-  const handleApplyPromptEdit = async (
-    outfitId: string,
-    prompt: string,
-  ): Promise<{ ok: boolean; error?: string }> => {
-    const target = outfits.find((o) => o.id === outfitId);
-    if (!target) return { ok: false, error: 'Outfit not found.' };
+    const renderedUrl =
+      outfit.flatLayImageUrl || (await renderOutfitCollageDataUrl(outfit, closetItems));
+    const outfitToSave: OutfitOption = {
+      ...outfit,
+      flatLayImageUrl: renderedUrl || null,
+      flatLayStatus: renderedUrl ? 'ready' : outfit.flatLayStatus,
+    };
 
-    setEditingOutfitId(outfitId);
-    try {
-      const sourceUrl = target.flatLayImageUrl || analysisImageUrl;
-      const sourceDataUrl = sourceUrl ? await urlToDataUrl(sourceUrl) : undefined;
-      const fullPrompt = target.flatLayImageUrl
-        ? prompt
-        : analysis
-          ? buildFlatLayPrompt(analysis, target, prompt)
-          : prompt;
+    const anchorImg =
+      outfit.pieces[0]?.imageUrl || getRepresentativeAnchorImage();
 
-      const res = await createOrEditImageApi({
-        prompt: fullPrompt,
-        sourceImageDataUrl: sourceDataUrl,
-        aspectRatio: '3:4',
-        imageSize: '1K',
-      });
-
-      setOutfits((prev) =>
-        prev.map((o) =>
-          o.id === outfitId
-            ? {
-                ...o,
-                flatLayImageUrl: res.imageUrl,
-                flatLayStatus: 'ready',
-                flatLayError: undefined,
-                editHistory: [...o.editHistory, prompt],
-              }
-            : o,
-        ),
-      );
-      return { ok: true };
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Could not apply flat-lay edit.';
-      return { ok: false, error: message };
-    } finally {
-      setEditingOutfitId(null);
-    }
-  };
-
-  const handleToggleSave = (outfit: OutfitOption) => {
-    if (!analysis) return;
     const result = toggleSavedOutfit(savedLooks, {
-      outfit,
-      anchorItemName: analysis.itemName,
-      anchorImageUrl: analysisImageUrl,
-      palette: analysis.palette,
+      outfit: outfitToSave,
+      anchorItemName: capsuleAnalysis.itemName,
+      anchorImageUrl: anchorImg,
+      palette: capsuleAnalysis.palette,
     });
     setSavedLooks(result.next);
 
@@ -532,6 +675,10 @@ export default function App() {
     }
   };
 
+  const handleSaveCustomLook = (customOutfit: OutfitOption) => {
+    void handleToggleSave(customOutfit);
+  };
+
   const handleRemoveSavedLook = (lookId: string) => {
     setSavedLooks((prev) => prev.filter((item) => item.id !== lookId));
     if (user) {
@@ -545,7 +692,12 @@ export default function App() {
   const handleRestoreAnalysis = (entry: HistoryAnalysisEntry) => {
     if (!entry.itemAnalysis || !entry.outfits) return;
     setAnalysis(entry.itemAnalysis);
-    setOutfits(entry.outfits);
+    setOutfits(
+      entry.outfits.map((o) => ({
+        ...o,
+        pieces: resolveOutfitPiecesWithCloset(o.pieces, closetItems),
+      })),
+    );
     handleNavigateSection('outfit-looks');
   };
 
@@ -563,20 +715,21 @@ export default function App() {
     });
   };
 
-  const isSamplePrecomputed = Boolean(
-    activeSampleId &&
-      SAMPLE_WARDROBE.find((s) => s.id === activeSampleId)?.precomputedOutfits,
-  );
-
   return (
-    <div className="min-h-screen bg-[#F8F8F7] text-[#141413] flex flex-col">
+    <div className="min-h-screen bg-[#F8F8F7] text-[#141413] flex flex-col pb-16 lg:pb-0">
       <Header
         savedCount={savedLooks.length}
+        closetCount={closetItems.length}
+        hasOutfits={outfits.length > 0}
+        activeSection={activeSection}
         user={user}
         authLoading={authLoading}
         onSignInWithGoogle={signInWithGoogle}
         onSignOut={signOutUser}
-        onTriggerUpload={handleTriggerUpload}
+        onTriggerUpload={() => {
+          handleNavigateSection('style-studio');
+          document.getElementById('closet-multi-file-input')?.click();
+        }}
         onNavigateSection={handleNavigateSection}
       />
 
@@ -597,94 +750,69 @@ export default function App() {
       )}
 
       <main className="flex-1">
-        <nav
-          aria-label="Mobile section links"
-          className="lg:hidden border-b border-[#E4E4E7] bg-white px-3 py-1.5 flex items-center gap-1 overflow-x-auto no-scrollbar text-xs font-medium text-[#575652]"
-        >
-          <button
-            type="button"
-            onClick={() => handleNavigateSection('style-studio')}
-            className="min-h-11 px-3 py-2 rounded-lg whitespace-nowrap shrink-0 hover:text-[#141413] hover:bg-[#F8F8F7] active:bg-[#EFEFEF] transition-colors cursor-pointer"
-          >
-            Style Studio
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigateSection('outfit-looks')}
-            className="min-h-11 px-3 py-2 rounded-lg whitespace-nowrap shrink-0 hover:text-[#141413] hover:bg-[#F8F8F7] active:bg-[#EFEFEF] transition-colors cursor-pointer"
-          >
-            Styled Looks
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigateSection('create-edit')}
-            className="min-h-11 px-3 py-2 rounded-lg whitespace-nowrap shrink-0 hover:text-[#141413] hover:bg-[#F8F8F7] active:bg-[#EFEFEF] transition-colors cursor-pointer"
-          >
-            Create &amp; Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigateSection('voice-stylist')}
-            className="min-h-11 px-3 py-2 rounded-lg whitespace-nowrap shrink-0 hover:text-[#141413] hover:bg-[#F8F8F7] active:bg-[#EFEFEF] transition-colors cursor-pointer"
-          >
-            Voice Stylist
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigateSection('saved-looks')}
-            className="min-h-11 px-3 py-2 rounded-lg whitespace-nowrap shrink-0 hover:text-[#141413] hover:bg-[#F8F8F7] active:bg-[#EFEFEF] transition-colors tabular-nums cursor-pointer"
-          >
-            {savedLooks.length > 0 ? `Saved (${savedLooks.length})` : 'Saved Looks'}
-          </button>
-        </nav>
 
-        <GarmentIntake
-          selectedImageUrl={selectedImageUrl}
-          selectedImageLabel={selectedImageLabel}
-          isSamplePrecomputed={isSamplePrecomputed}
+        <ClosetStudio
+          gender={gender}
           season={season}
           aesthetic={aesthetic}
-          isAnalyzing={isAnalyzing}
-          intakeError={intakeError}
-          fileInputRef={fileInputRef}
+          closetItems={closetItems}
+          anchorItemId={anchorItemId}
+          isComposing={isComposing}
+          composeError={composeError}
+          onGenderChange={(nextGender) => {
+            setGender(nextGender);
+            void persistUserPrefs(nextGender, season, aesthetic, preferredVoice);
+          }}
           onSeasonChange={(nextSeason) => {
             setSeason(nextSeason);
-            void persistUserPrefs(nextSeason, aesthetic, preferredVoice);
+            void persistUserPrefs(gender, nextSeason, aesthetic, preferredVoice);
           }}
           onAestheticChange={(nextAesthetic) => {
             setAesthetic(nextAesthetic);
-            void persistUserPrefs(season, nextAesthetic, preferredVoice);
+            void persistUserPrefs(gender, season, nextAesthetic, preferredVoice);
           }}
-          onFileSelected={handleFileSelected}
-          onSelectSample={handleSelectSample}
-          onGenerateLooks={handleGenerateLooks}
+          onUploadFilesToCategory={handleUploadFilesToCategory}
+          onUpdateItemLabel={handleUpdateItemLabel}
+          onMoveItemCategory={handleMoveItemCategory}
+          onDeleteItem={handleDeleteItem}
+          onToggleAnchorItem={(id) =>
+            setAnchorItemId((curr) => (curr === id ? null : id))
+          }
+          onLoadStarterCloset={handleLoadStarterCloset}
+          onGenerateOutfits={() => void handleGenerateOutfitsFromCloset()}
         />
 
         {analysis && (
-          <AnalysisStrip analysis={analysis} anchorImageUrl={analysisImageUrl} />
+          <AnalysisStrip
+            analysis={analysis}
+            anchorImageUrl={getRepresentativeAnchorImage()}
+          />
         )}
 
         {outfits.length > 0 && analysis && (
           <OutfitGrid
             outfits={outfits}
+            closetItems={closetItems}
             anchorPalette={analysis.palette}
-            anchorImageUrl={analysisImageUrl}
+            anchorImageUrl={getRepresentativeAnchorImage()}
             anchorItemName={analysis.itemName}
             savedLooks={savedLooks}
-            editingOutfitId={editingOutfitId}
-            isRefreshingAll={isAnalyzing}
-            onRetryFlatLay={handleRetryFlatLay}
-            onApplyPromptEdit={handleApplyPromptEdit}
-            onToggleSave={handleToggleSave}
+            isRefreshingAll={isComposing}
+            onSwapPiece={handleSwapPiece}
+            onToggleSave={(o) => void handleToggleSave(o)}
             onInspectLook={(outfit) =>
               setLightboxState({ outfit, anchorItemName: analysis.itemName })
             }
-            onRefreshAllOutfits={handleRefreshAllOutfits}
+            onRefreshAllOutfits={() => void handleGenerateOutfitsFromCloset()}
             onExportAllToPdf={handleExportAllToPdf}
           />
         )}
 
-        <CreateEditStudio currentOutfits={outfits} />
+        <MixMatchStudio
+          gender={gender}
+          closetItems={closetItems}
+          onSaveCustomLook={handleSaveCustomLook}
+        />
 
         <VoiceStylistSection
           analysis={analysis}
@@ -692,13 +820,14 @@ export default function App() {
           preferredVoice={preferredVoice}
           onVoiceChange={(nextVoice) => {
             setPreferredVoice(nextVoice);
-            void persistUserPrefs(season, aesthetic, nextVoice);
+            void persistUserPrefs(gender, season, aesthetic, nextVoice);
           }}
           onVoiceSessionEnded={handleVoiceSessionEnded}
         />
 
         <SavedLooksSection
           savedLooks={savedLooks}
+          closetItems={closetItems}
           isSignedIn={Boolean(user)}
           recentAnalyses={recentAnalyses}
           onSignInPrompt={signInWithGoogle}
@@ -716,15 +845,30 @@ export default function App() {
             Atelier Edit
           </span>
           <span>
-            Editorial Virtual Stylist · Casual, Business &amp; Night Out Flat-Lay Studio
+            Personal Wardrobe Vault · Real-Photo Outfit Composer &amp; Lookbook Studio
           </span>
         </div>
       </footer>
 
       <LookLightboxModal
-        outfit={lightboxState?.outfit ?? null}
+        outfit={
+          lightboxState
+            ? outfits.find((o) => o.id === lightboxState.outfit.id) ??
+              lightboxState.outfit
+            : null
+        }
+        closetItems={closetItems}
         anchorItemName={lightboxState?.anchorItemName ?? ''}
+        anchorImageUrl={getRepresentativeAnchorImage()}
         onClose={() => setLightboxState(null)}
+      />
+
+      <MobileBottomNav
+        activeSection={activeSection}
+        hasOutfits={outfits.length > 0}
+        closetCount={closetItems.length}
+        savedCount={savedLooks.length}
+        onNavigateSection={handleNavigateSection}
       />
     </div>
   );

@@ -15,7 +15,7 @@ test('firestore.rules covers every collection in firebase-blueprint.json with de
   assert.match(rules, /request\.auth\.token\.email_verified == true/);
 
   const collections = Object.keys(blueprint.firestore ?? {});
-  assert.equal(collections.length, 4);
+  assert.equal(collections.length, 5);
   for (const collectionPath of collections) {
     assert.ok(
       rules.includes(`match ${collectionPath}`),
@@ -27,6 +27,8 @@ test('firestore.rules covers every collection in firebase-blueprint.json with de
 test('firestore.rules enforces Dirty Dozen invariants: id regex, strict keys, array bounds, and server timestamps', () => {
   const rules = fs.readFileSync(rulesPath, 'utf8');
   assert.match(rules, /function isValidId\(id\)/);
+  assert.match(rules, /function isValidWardrobeItemDoc\(data, userId, itemId\)/);
+  assert.match(rules, /data\.imageDataUrl is string && data\.imageDataUrl\.size\(\) >= 10 && data\.imageDataUrl\.size\(\) <= 180000/);
   assert.match(rules, /incoming\(\)\.createdAt == request\.time/);
   assert.match(rules, /incoming\(\)\.updatedAt == request\.time/);
   assert.match(rules, /incoming\(\)\.uid == existing\(\)\.uid/);

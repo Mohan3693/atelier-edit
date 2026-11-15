@@ -1,5 +1,6 @@
 import { Trash2, Maximize2, RotateCcw } from 'lucide-react';
-import type { ItemAnalysis, OutfitOption, SavedLook } from '../types/stylist';
+import type { ItemAnalysis, OutfitOption, SavedLook, WardrobeItem } from '../types/stylist';
+import { OutfitCollageBoard } from './OutfitCollageBoard';
 
 export interface HistoryAnalysisEntry {
   id: number;
@@ -15,6 +16,7 @@ export interface HistoryAnalysisEntry {
 
 interface SavedLooksSectionProps {
   savedLooks: SavedLook[];
+  closetItems: WardrobeItem[];
   isSignedIn: boolean;
   recentAnalyses: HistoryAnalysisEntry[];
   onSignInPrompt: () => void;
@@ -25,6 +27,7 @@ interface SavedLooksSectionProps {
 
 export function SavedLooksSection({
   savedLooks,
+  closetItems,
   isSignedIn,
   recentAnalyses,
   onSignInPrompt,
@@ -67,8 +70,8 @@ export function SavedLooksSection({
           <div className="bg-white border border-[#E4E4E7] rounded-2xl p-6 sm:p-10 text-center">
             <p className="font-display text-2xl text-[#141413]">No Saved Looks Yet</p>
             <p className="text-sm text-[#575652] mt-1.5 max-w-md mx-auto">
-              Tap &ldquo;Save Look&rdquo; on any Casual, Business, or Night Out card
-              above to keep your favorite combinations here.
+              Tap &ldquo;Save Look&rdquo; on any Casual, Business, or Night Out outfit above to
+              keep your favorite wardrobe pairings here.
             </p>
           </div>
         ) : (
@@ -78,22 +81,14 @@ export function SavedLooksSection({
                 key={entry.id}
                 className="bg-white border border-[#E4E4E7] rounded-2xl overflow-hidden flex flex-col"
               >
-                <div className="aspect-[4/3] bg-[#F8F8F7] border-b border-[#EFEFEF] overflow-hidden">
-                  {entry.outfit.flatLayImageUrl ? (
-                    <img
-                      src={entry.outfit.flatLayImageUrl}
-                      alt={`${entry.outfit.title} flat-lay`}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <img
-                      src={entry.anchorImageUrl}
-                      alt={entry.anchorItemName}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-contain p-4"
-                    />
-                  )}
+                <div className="aspect-[4/3] bg-[#F5F4F0] border-b border-[#EFEFEF] overflow-hidden">
+                  <OutfitCollageBoard
+                    outfit={entry.outfit}
+                    closetItems={closetItems}
+                    anchorImageUrl={entry.anchorImageUrl}
+                    anchorItemName={entry.anchorItemName}
+                    compact
+                  />
                 </div>
 
                 <div className="p-5 flex-1 flex flex-col justify-between gap-4">
@@ -147,7 +142,7 @@ export function SavedLooksSection({
             <div>
               <p className="text-xs font-medium text-[#575652]">Account Wardrobe Archive</p>
               <h3 className="font-display text-2xl font-semibold text-[#141413]">
-                Recent Garment Analyses
+                Recent Closet Sessions
               </h3>
             </div>
           </div>

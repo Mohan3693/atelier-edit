@@ -1,5 +1,37 @@
 export type OccasionType = 'Casual' | 'Business' | 'Night Out';
 
+export type WardrobeGender = 'male' | 'female' | 'unisex';
+
+export type WardrobeCategoryId =
+  | 'tops'
+  | 'bottoms'
+  | 'dresses'
+  | 'outerwear'
+  | 'shoes'
+  | 'bags'
+  | 'watches'
+  | 'eyewear'
+  | 'accessories';
+
+export interface WardrobeCategoryMeta {
+  id: WardrobeCategoryId;
+  label: string;
+  shortLabel: string;
+  placeholder: string;
+}
+
+export interface WardrobeItem {
+  id: string;
+  gender: WardrobeGender;
+  category: WardrobeCategoryId;
+  label: string;
+  imageUrl: string;
+  syncThumbnailUrl: string;
+  colorName: string;
+  colorHex: string;
+  createdAt: string;
+}
+
 export type ColorPaletteCategory =
   | 'Monochromatic'
   | 'Complementary'
@@ -34,6 +66,9 @@ export interface OutfitPiece {
   colorHex: string;
   material: string;
   stylingTip: string;
+  wardrobeItemId?: string;
+  category?: WardrobeCategoryId;
+  imageUrl?: string;
 }
 
 export interface OutfitOption {
@@ -50,6 +85,7 @@ export interface OutfitOption {
   flatLayError?: string;
   requiresPaidKey?: boolean;
   editHistory: string[];
+  missingNote?: string;
 }
 
 export interface SavedLook {

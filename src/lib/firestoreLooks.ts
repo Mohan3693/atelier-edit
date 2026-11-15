@@ -12,11 +12,19 @@ import {
   where,
   type Unsubscribe,
 } from 'firebase/firestore';
-import type { ColorPaletteCategory, ItemAnalysis, SavedLook } from '../types/stylist';
+import type {
+  ColorPaletteCategory,
+  ItemAnalysis,
+  SavedLook,
+  WardrobeCategoryId,
+  WardrobeGender,
+  WardrobeItem,
+} from '../types/stylist';
 import { db } from './firebase';
 import { handleFirestoreError, OperationType } from './firestoreErrors';
 
 export interface UserStylePreferences {
+  preferredGender?: WardrobeGender;
   preferredSeason: 'All-Season' | 'Spring / Summer' | 'Autumn / Winter';
   preferredAesthetic: string;
   preferredVoice: 'Zephyr' | 'Kore' | 'Puck' | 'Charon' | 'Fenrir';
@@ -65,6 +73,30 @@ function normalizePaletteCategory(cat: unknown): ColorPaletteCategory {
   return 'Neutral Tones';
 }
 
+function normalizeGender(val: unknown): WardrobeGender {
+  if (val === 'male' || val === 'female' || val === 'unisex') return val;
+  return 'unisex';
+}
+
+const VALID_CATEGORIES = new Set<WardrobeCategoryId>([
+  'tops',
+  'bottoms',
+  'dresses',
+  'outerwear',
+  'shoes',
+  'bags',
+  'watches',
+  'eyewear',
+  'accessories',
+]);
+
+function normalizeCategory(val: unknown): WardrobeCategoryId {
+  if (typeof val === 'string' && VALID_CATEGORIES.has(val as WardrobeCategoryId)) {
+    return val as WardrobeCategoryId;
+  }
+  return 'tops';
+}
+
 export async function syncUserProfileToFirestore(user: User): Promise<void> {
   if (!user.emailVerified) return;
   const path = `users/${user.uid}/private/profile`;
@@ -104,6 +136,12 @@ export async function loadUserPreferencesFromFirestore(
     if (!snap.exists()) return null;
     const data = snap.data();
     return {
+      preferredGender:
+        data.preferredGender === 'male' ||
+        data.preferredGender === 'female' ||
+        data.preferredGender === 'unisex'
+          ? data.preferredGender
+          : undefined,
       preferredSeason:
         data.preferredSeason === 'Spring / Summer' || data.preferredSeason === 'Autumn / Winter'
           ? data.preferredSeason
@@ -129,6 +167,7 @@ export async function saveUserPreferencesToFirestore(
   const path = `users/${uid}/preferences/default`;
   const ref = doc(db, 'users', uid, 'preferences', 'default');
   const payload = {
+    preferredGender: normalizeGender(prefs.preferredGender),
     preferredSeason:
       prefs.preferredSeason === 'Spring / Summer' || prefs.preferredSeason === 'Autumn / Winter'
         ? prefs.preferredSeason
@@ -163,6 +202,107 @@ export async function saveUserPreferencesToFirestore(
   }
 }
 
+export async function upsertWardrobeItemInFirestore(
+  uid: string,
+  item: WardrobeItem,
+): Promise<void> {
+  const safeId = sanitizeFirestoreId(item.id);
+  const path = `users/${uid}/wardrobeItems/${safeId}`;
+  const ref = doc(db, 'users', uid, 'wardrobeItems', safeId);
+
+  const boundedImage = clampString(
+    item.syncThumbnailUrl || item.imageUrl,
+    179000,
+    '',
+  );
+  if (boundedImage.length < 10) return;
+
+  const fields = {
+    gender: normalizeGender(item.gender),
+    category: normalizeCategory(item.category),
+    label: clampString(item.label, 120, 'Wardrobe Piece'),
+    colorName: clampString(item.colorName, 60, 'Neutral'),
+    colorHex: clampString(item.colorHex, 16, '#4A4945'),
+    imageDataUrl: boundedImage,
+  };
+
+  try {
+    const existingSnap = await getDoc(ref);
+    if (existingSnap.exists()) {
+      await updateDoc(ref, {
+        ...fields,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        id: safeId,
+        uid,
+        ...fields,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteWardrobeItemInFirestore(
+  uid: string,
+  itemId: string,
+): Promise<void> {
+  const safeId = sanitizeFirestoreId(itemId);
+  const path = `users/${uid}/wardrobeItems/${safeId}`;
+  const ref = doc(db, 'users', uid, 'wardrobeItems', safeId);
+  try {
+    await deleteDoc(ref);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export function subscribeWardrobeItemsInFirestore(
+  uid: string,
+  onData: (items: WardrobeItem[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  const path = `users/${uid}/wardrobeItems`;
+  const q = query(collection(db, 'users', uid, 'wardrobeItems'), where('uid', '==', uid));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items: WardrobeItem[] = snapshot.docs.map((docSnap) => {
+        const d = docSnap.data();
+        const img = String(d.imageDataUrl ?? '');
+        return {
+          id: String(d.id ?? docSnap.id),
+          gender: normalizeGender(d.gender),
+          category: normalizeCategory(d.category),
+          label: String(d.label ?? 'Wardrobe Piece'),
+          colorName: String(d.colorName ?? 'Neutral'),
+          colorHex: String(d.colorHex ?? '#4A4945'),
+          imageUrl: img,
+          syncThumbnailUrl: img,
+          createdAt:
+            typeof d.createdAt?.toDate === 'function'
+              ? d.createdAt.toDate().toISOString()
+              : new Date().toISOString(),
+        };
+      });
+      onData(items);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (wrapped) {
+        if (onError && wrapped instanceof Error) {
+          onError(wrapped);
+        }
+      }
+    },
+  );
+}
+
 export async function upsertSavedLookInFirestore(
   uid: string,
   look: SavedLook,
@@ -195,7 +335,7 @@ export async function upsertSavedLookInFirestore(
     colorHarmonyNote: clampString(
       look.outfit.colorHarmonyNote,
       500,
-      'Harmonized with the anchor garment palette.',
+      'Harmonized with your wardrobe palette.',
     ),
     colorPaletteCategory: normalizePaletteCategory(look.outfit.colorPaletteCategory),
     piecesSummary,
@@ -297,8 +437,8 @@ export async function recordAnalysisInFirestore(
     await setDoc(ref, {
       id: safeId,
       uid,
-      itemName: clampString(analysis.itemName, 140, 'Garment Piece'),
-      category: clampString(analysis.category, 80, 'Apparel'),
+      itemName: clampString(analysis.itemName, 140, 'Wardrobe Closet'),
+      category: clampString(analysis.category, 80, 'Personal Closet'),
       season: clampString(season, 64, 'All-Season'),
       aesthetic: clampString(aesthetic, 64, 'Modern Editorial'),
       stylePersonality: clampString(analysis.stylePersonality, 120, 'Editorial'),

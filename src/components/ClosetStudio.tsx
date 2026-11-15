@@ -16,7 +16,6 @@ interface ClosetStudioProps {
   anchorItemId: string | null;
   isComposing: boolean;
   composeError: string | null;
-  onGenderChange: (gender: WardrobeGender) => void;
   onSeasonChange: (season: string) => void;
   onAestheticChange: (aesthetic: string) => void;
   onUploadFilesToCategory: (files: FileList | File[], category: WardrobeCategoryId) => Promise<void>;
@@ -28,12 +27,6 @@ interface ClosetStudioProps {
   onGenerateOutfits: () => void;
 }
 
-const GENDER_OPTIONS: Array<{ id: WardrobeGender; label: string; shortLabel: string }> = [
-  { id: 'male', label: 'Male (Menswear)', shortLabel: 'Male' },
-  { id: 'female', label: 'Female (Womenswear)', shortLabel: 'Female' },
-  { id: 'unisex', label: 'All / Unisex', shortLabel: 'Unisex' },
-];
-
 export function ClosetStudio({
   gender,
   season,
@@ -42,7 +35,6 @@ export function ClosetStudio({
   anchorItemId,
   isComposing,
   composeError,
-  onGenderChange,
   onSeasonChange,
   onAestheticChange,
   onUploadFilesToCategory,
@@ -106,54 +98,24 @@ export function ClosetStudio({
         <div className="lg:col-span-5 space-y-6">
           <div className="space-y-3">
             <p className="text-xs font-medium tracking-wide text-[#575652]">
-              Personal Wardrobe Vault · Real-Photo Stylist
+              {gender === 'male'
+                ? "Men's Wardrobe Vault"
+                : gender === 'female'
+                  ? "Women's Wardrobe Vault"
+                  : 'Personal Wardrobe Vault'}{' '}
+              · Real-Photo Stylist
             </p>
             <h1 className="font-display text-[clamp(2rem,4.2vw,3.5rem)] font-semibold leading-[1.06] tracking-tight text-[#141413] text-balance max-w-xl">
               Your real closet. Three styled outfits.
             </h1>
             <p className="text-[15px] leading-relaxed text-[#575652] max-w-lg">
-              Choose your wardrobe profile, upload your shirts, trousers or dresses, shoes,
-              watches, specs, and bags once. We store them and compose 3 complete outfits strictly
-              from what you actually own.
+              Upload your {gender === 'male' ? 'shirts, trousers' : 'tops, dresses, skirts'},
+              shoes, watches, specs, and bags once. We store them privately and compose 3 complete
+              outfits strictly from what you own.
             </p>
           </div>
 
           <div className="space-y-4 bg-white border border-[#E4E4E7] rounded-2xl p-4 sm:p-5">
-            <div>
-              <span className="block text-xs font-medium text-[#575652] mb-2">
-                1. Select Wardrobe Profile
-              </span>
-              <div
-                role="group"
-                aria-label="Wardrobe gender profile"
-                className="grid grid-cols-3 gap-1 p-1 bg-[#EFEFEF] rounded-xl"
-              >
-                {GENDER_OPTIONS.map((opt) => {
-                  const isActive = gender === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      aria-pressed={isActive}
-                      onClick={() => {
-                        onGenderChange(opt.id);
-                        if (opt.id === 'male' && activeCategory === 'dresses') {
-                          setActiveCategory('tops');
-                        }
-                      }}
-                      className={`min-h-11 sm:min-h-10 px-2.5 py-2 text-xs font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
-                        isActive
-                          ? 'bg-white text-[#141413] shadow-xs'
-                          : 'text-[#575652] hover:text-[#141413]'
-                      }`}
-                    >
-                      <span className="sm:hidden">{opt.shortLabel}</span>
-                      <span className="hidden sm:inline">{opt.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -249,7 +211,7 @@ export function ClosetStudio({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h2 className="font-display text-2xl font-semibold text-[#141413] tracking-tight">
-                2. Upload Your Clothes &amp; Accessories
+                Upload Your Clothes &amp; Accessories
               </h2>
               <p className="text-xs text-[#575652] mt-0.5">
                 Pick a category tab and add photos (you can select multiple files at once).

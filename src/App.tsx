@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Header } from './components/Header';
+import { AuthGateView } from './components/AuthGateView';
+import { GenderOnboardingView } from './components/GenderOnboardingView';
 import { MobileBottomNav, type AppSectionId } from './components/MobileBottomNav';
 import { ClosetStudio } from './components/ClosetStudio';
 import { AnalysisStrip } from './components/AnalysisStrip';
@@ -65,6 +67,10 @@ import { exportOutfitsToPdf } from './utils/pdfExport';
 
 const GENDER_STORAGE_KEY = 'atelier_edit_gender_v1';
 
+function sessionGenderKey(uid: string): string {
+  return `atelier_edit_session_gender_${uid}`;
+}
+
 export default function App() {
   const {
     user,
@@ -79,8 +85,12 @@ export default function App() {
   const [gender, setGender] = useState<WardrobeGender>(() => {
     if (typeof window === 'undefined') return 'male';
     const raw = window.localStorage.getItem(GENDER_STORAGE_KEY);
-    return raw === 'female' || raw === 'unisex' ? raw : 'male';
+    return raw === 'female' ? 'female' : 'male';
   });
+  const [savedServerGender, setSavedServerGender] = useState<WardrobeGender | undefined>(
+    undefined,
+  );
+  const [genderConfirmed, setGenderConfirmed] = useState<boolean>(false);
   const [season, setSeason] = useState<string>('All-Season');
   const [aesthetic, setAesthetic] = useState<string>('Modern Editorial');
   const [preferredVoice, setPreferredVoice] = useState<StylistVoiceName>('Zephyr');
@@ -132,7 +142,22 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setRecentAnalyses([]);
+      setGenderConfirmed(false);
+      setSavedServerGender(undefined);
       return;
+    }
+
+    // Check if the user has already picked Male/Female during this login session
+    try {
+      const sessionChoice = window.sessionStorage.getItem(sessionGenderKey(user.uid));
+      if (sessionChoice === 'male' || sessionChoice === 'female') {
+        setGender(sessionChoice);
+        setGenderConfirmed(true);
+      } else {
+        setGenderConfirmed(false);
+      }
+    } catch {
+      setGenderConfirmed(false);
     }
 
     let cancelled = false;
@@ -144,8 +169,12 @@ export default function App() {
         await syncUserProfileToFirestore(user);
         const prefs = await loadUserPreferencesFromFirestore(user.uid);
         if (!cancelled && prefs) {
-          if (prefs.preferredGender) {
-            setGender(prefs.preferredGender);
+          if (prefs.preferredGender === 'male' || prefs.preferredGender === 'female') {
+            setSavedServerGender(prefs.preferredGender);
+            const alreadyChosen = window.sessionStorage.getItem(sessionGenderKey(user.uid));
+            if (!alreadyChosen) {
+              setGender(prefs.preferredGender);
+            }
           }
           setSeason(prefs.preferredSeason);
           setAesthetic(prefs.preferredAesthetic);
@@ -256,6 +285,34 @@ export default function App() {
     } catch {
       // Non-blocking preference sync
     }
+  };
+
+  const handleSelectLoginGender = (chosenGender: 'male' | 'female') => {
+    setGender(chosenGender);
+    setSavedServerGender(chosenGender);
+    setGenderConfirmed(true);
+    if (user) {
+      try {
+        window.sessionStorage.setItem(sessionGenderKey(user.uid), chosenGender);
+      } catch {
+        // Ignore session storage errors
+      }
+    }
+    void persistUserPrefs(chosenGender, season, aesthetic, preferredVoice);
+  };
+
+  const handleSignOutClick = async () => {
+    if (user) {
+      try {
+        window.sessionStorage.removeItem(sessionGenderKey(user.uid));
+      } catch {
+        // Ignore session storage errors
+      }
+    }
+    setGenderConfirmed(false);
+    setAnalysis(null);
+    setOutfits([]);
+    await signOutUser();
   };
 
   useEffect(() => {
@@ -384,27 +441,37 @@ export default function App() {
       label: string;
       category: WardrobeCategoryId;
       imageUrl: string;
-    }> = [
-      {
-        label: 'Emerald Silk Slip Dress',
-        category: 'dresses',
-        imageUrl: SAMPLE_WARDROBE[1].imageUrl,
-      },
-      {
-        label: 'Rust Houndstooth Wool Blazer',
-        category: 'outerwear',
-        imageUrl: SAMPLE_WARDROBE[2].imageUrl,
-      },
-      {
-        label: 'Botanical Jacquard Midi Skirt',
-        category: 'bottoms',
-        imageUrl: SAMPLE_WARDROBE[0].imageUrl,
-      },
-    ];
-
-    if (gender === 'male') {
-      setGender('unisex');
-    }
+    }> =
+      gender === 'male'
+        ? [
+            {
+              label: 'Rust Houndstooth Wool Blazer',
+              category: 'outerwear',
+              imageUrl: SAMPLE_WARDROBE[2].imageUrl,
+            },
+            {
+              label: 'Botanical Jacquard Statement',
+              category: 'tops',
+              imageUrl: SAMPLE_WARDROBE[0].imageUrl,
+            },
+          ]
+        : [
+            {
+              label: 'Emerald Silk Slip Dress',
+              category: 'dresses',
+              imageUrl: SAMPLE_WARDROBE[1].imageUrl,
+            },
+            {
+              label: 'Rust Houndstooth Wool Blazer',
+              category: 'outerwear',
+              imageUrl: SAMPLE_WARDROBE[2].imageUrl,
+            },
+            {
+              label: 'Botanical Jacquard Midi Skirt',
+              category: 'bottoms',
+              imageUrl: SAMPLE_WARDROBE[0].imageUrl,
+            },
+          ];
 
     const added: WardrobeItem[] = [];
     for (let i = 0; i < starterSpecs.length; i++) {
@@ -715,6 +782,31 @@ export default function App() {
     });
   };
 
+  if (!user) {
+    return (
+      <AuthGateView
+        authLoading={authLoading}
+        authError={authError}
+        onClearAuthError={clearAuthError}
+        onSignInWithGoogle={() => void signInWithGoogle()}
+      />
+    );
+  }
+
+  const firstName =
+    user.displayName?.split(' ')[0] || user.email?.split('@')[0] || 'there';
+
+  if (!genderConfirmed) {
+    return (
+      <GenderOnboardingView
+        userName={firstName}
+        previousGender={savedServerGender}
+        onSelectGender={handleSelectLoginGender}
+        onSignOut={() => void handleSignOutClick()}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8F8F7] text-[#141413] flex flex-col pb-16 lg:pb-0">
       <Header
@@ -722,10 +814,12 @@ export default function App() {
         closetCount={closetItems.length}
         hasOutfits={outfits.length > 0}
         activeSection={activeSection}
+        gender={gender}
         user={user}
         authLoading={authLoading}
         onSignInWithGoogle={signInWithGoogle}
-        onSignOut={signOutUser}
+        onSignOut={() => void handleSignOutClick()}
+        onSwitchGenderRequest={() => setGenderConfirmed(false)}
         onTriggerUpload={() => {
           handleNavigateSection('style-studio');
           document.getElementById('closet-multi-file-input')?.click();
@@ -759,10 +853,6 @@ export default function App() {
           anchorItemId={anchorItemId}
           isComposing={isComposing}
           composeError={composeError}
-          onGenderChange={(nextGender) => {
-            setGender(nextGender);
-            void persistUserPrefs(nextGender, season, aesthetic, preferredVoice);
-          }}
           onSeasonChange={(nextSeason) => {
             setSeason(nextSeason);
             void persistUserPrefs(gender, nextSeason, aesthetic, preferredVoice);

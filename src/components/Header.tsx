@@ -14,16 +14,19 @@ import {
   X,
 } from 'lucide-react';
 import type { AppSectionId } from './MobileBottomNav';
+import type { WardrobeGender } from '../types/stylist';
 
 interface HeaderProps {
   savedCount: number;
   closetCount: number;
   hasOutfits: boolean;
   activeSection: AppSectionId;
+  gender: WardrobeGender;
   user: User | null;
   authLoading: boolean;
   onSignInWithGoogle: () => void;
   onSignOut: () => void;
+  onSwitchGenderRequest: () => void;
   onTriggerUpload: () => void;
   onNavigateSection: (sectionId: AppSectionId) => void;
 }
@@ -33,10 +36,12 @@ export function Header({
   closetCount,
   hasOutfits,
   activeSection,
+  gender,
   user,
   authLoading,
   onSignInWithGoogle,
   onSignOut,
+  onSwitchGenderRequest,
   onTriggerUpload,
   onNavigateSection,
 }: HeaderProps) {
@@ -139,9 +144,14 @@ export function Header({
           {!authLoading &&
             (user ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-[#575652] whitespace-nowrap">
-                  {shortName}
-                </span>
+                <button
+                  type="button"
+                  onClick={onSwitchGenderRequest}
+                  title="Change Male or Female wardrobe"
+                  className="text-xs font-medium text-[#575652] hover:text-[#141413] hover:underline whitespace-nowrap cursor-pointer"
+                >
+                  {shortName} · {gender === 'female' ? 'Female' : 'Male'}
+                </button>
                 <button
                   type="button"
                   onClick={onSignOut}
@@ -254,7 +264,19 @@ export function Header({
                 (user ? (
                   <div className="flex items-center justify-between gap-3 bg-[#F8F8F7] border border-[#E4E4E7] rounded-xl px-3.5 py-2.5">
                     <div className="min-w-0">
-                      <span className="block text-[11px] text-[#575652]">Signed in</span>
+                      <span className="block text-[11px] text-[#575652]">
+                        {gender === 'female' ? "Women's Closet" : "Men's Closet"} ·{' '}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            onSwitchGenderRequest();
+                          }}
+                          className="font-semibold text-[#9E1B32] underline cursor-pointer"
+                        >
+                          Change
+                        </button>
+                      </span>
                       <span className="block text-xs font-semibold text-[#141413] truncate">
                         {user.displayName || user.email || shortName}
                       </span>

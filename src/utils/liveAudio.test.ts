@@ -8,7 +8,7 @@ import {
   int16PcmToBase64,
   normalizeVoiceName,
 } from './liveAudio';
-import { SAMPLE_WARDROBE } from '../data/sampleWardrobe';
+import type { ItemAnalysis, OutfitOption } from '../types/stylist';
 
 test('PCM16 encode/decode round-trips sine-like samples within 16-bit quantization tolerance', () => {
   const original = new Float32Array([-1, -0.5, 0, 0.25, 0.75, 1]);
@@ -50,11 +50,55 @@ test('getLiveWebSocketUrl uses wss for https and ws for http, or respects custom
 });
 
 test('buildStylistLiveContextSummary summarizes anchor garment and outfits', () => {
-  const sample = SAMPLE_WARDROBE[0];
-  const summary = buildStylistLiveContextSummary(
-    sample.precomputedAnalysis ?? null,
-    sample.precomputedOutfits ?? [],
-  );
+  const analysis: ItemAnalysis = {
+    itemName: 'Botanical Jacquard Midi Skirt',
+    category: 'A-Line Midi Skirt',
+    silhouette: 'High-waisted A-line',
+    fabricAndTexture: 'Cotton-silk jacquard',
+    patternDescription: 'Cobalt and ochre floral motif',
+    stylePersonality: 'Gallery Editorial',
+    stylingStrategy: 'Balance bold weave with solids.',
+    palette: [{ name: 'Cobalt Bloom', hex: '#1F4DA1', role: 'Primary' }],
+  };
+  const outfits: OutfitOption[] = [
+    {
+      id: '1',
+      occasion: 'Casual',
+      title: 'Sunday Walk',
+      moodSummary: 'Easy daylight styling.',
+      colorHarmonyNote: 'Warm leather echoes ochre.',
+      pieces: [],
+      flatLayPrompt: '',
+      flatLayImageUrl: null,
+      flatLayStatus: 'ready',
+      editHistory: [],
+    },
+    {
+      id: '2',
+      occasion: 'Business',
+      title: 'Gallery Briefing',
+      moodSummary: 'Tailored charcoal.',
+      colorHarmonyNote: 'Ivory brightens.',
+      pieces: [],
+      flatLayPrompt: '',
+      flatLayImageUrl: null,
+      flatLayStatus: 'ready',
+      editHistory: [],
+    },
+    {
+      id: '3',
+      occasion: 'Night Out',
+      title: 'Vernissage',
+      moodSummary: 'Evening silk.',
+      colorHarmonyNote: 'Bronze metallic.',
+      pieces: [],
+      flatLayPrompt: '',
+      flatLayImageUrl: null,
+      flatLayStatus: 'ready',
+      editHistory: [],
+    },
+  ];
+  const summary = buildStylistLiveContextSummary(analysis, outfits);
   assert.match(summary, /Botanical Jacquard Midi Skirt/);
   assert.match(summary, /Casual/);
   assert.match(summary, /Business/);

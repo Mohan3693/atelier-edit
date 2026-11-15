@@ -40,6 +40,9 @@ export async function urlToDataUrl(
     throw new Error(`Could not load image asset (${response.status}).`);
   }
   const blob = await response.blob();
+  if (!blob.type.startsWith('image/')) {
+    throw new Error('Could not load image asset as a valid image.');
+  }
   const rawDataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -96,6 +99,22 @@ export class ApiRequestError extends Error {
   }
 }
 
+async function readErrorPayload(response: Response, fallback: string) {
+  const text = await response.text().catch(() => '');
+  try {
+    const parsed = JSON.parse(text) as { error?: string; requiresPaidKey?: boolean };
+    return {
+      error: parsed.error || `${fallback} (HTTP ${response.status})`,
+      requiresPaidKey: Boolean(parsed.requiresPaidKey),
+    };
+  } catch {
+    return {
+      error: `${fallback} (HTTP ${response.status})`,
+      requiresPaidKey: false,
+    };
+  }
+}
+
 export async function analyzeGarmentApi(params: {
   imageDataUrl: string;
   season: string;
@@ -107,15 +126,15 @@ export async function analyzeGarmentApi(params: {
     body: JSON.stringify(params),
   });
 
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const errPayload = await readErrorPayload(response, 'Failed to analyze garment.');
     throw new ApiRequestError(
-      payload.error || 'Failed to analyze garment.',
+      errPayload.error,
       response.status,
-      Boolean(payload.requiresPaidKey),
+      errPayload.requiresPaidKey,
     );
   }
-  return payload as AnalyzeResponse;
+  return (await response.json()) as AnalyzeResponse;
 }
 
 export async function generateFlatLayApi(params: {
@@ -131,15 +150,18 @@ export async function generateFlatLayApi(params: {
     body: JSON.stringify(params),
   });
 
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const errPayload = await readErrorPayload(
+      response,
+      'Failed to generate flat-lay visualization.',
+    );
     throw new ApiRequestError(
-      payload.error || 'Failed to generate flat-lay visualization.',
+      errPayload.error,
       response.status,
-      Boolean(payload.requiresPaidKey),
+      errPayload.requiresPaidKey,
     );
   }
-  return payload as { imageUrl: string; modelNote?: string };
+  return (await response.json()) as { imageUrl: string; modelNote?: string };
 }
 
 export async function createOrEditImageApi(params: {
@@ -154,15 +176,18 @@ export async function createOrEditImageApi(params: {
     body: JSON.stringify(params),
   });
 
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    const errPayload = await readErrorPayload(
+      response,
+      'Failed to generate or edit image.',
+    );
     throw new ApiRequestError(
-      payload.error || 'Failed to generate or edit image.',
+      errPayload.error,
       response.status,
-      Boolean(payload.requiresPaidKey),
+      errPayload.requiresPaidKey,
     );
   }
-  return payload as { imageUrl: string; modelNote?: string };
+  return (await response.json()) as { imageUrl: string; modelNote?: string };
 }
 
 export interface SqlWardrobeHistoryResponse {

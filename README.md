@@ -15,7 +15,7 @@ The app runs on `http://localhost:3000`.
 
 ## Deploying to Vercel from GitHub
 
-1. Push this repository to GitHub and import the project in **Vercel** (`vercel.json` is preconfigured for Vite `dist/` output and `/api/*` serverless routing via `api/index.ts`).
+1. Push this repository to GitHub and import the project in **Vercel** (`vercel.json` is preconfigured for Vite `dist/` output and `/api/*` serverless routing via `api/index.mjs`).
 2. Add the required Environment Variable in **Vercel Project Settings -> Environment Variables**:
    - `GEMINI_API_KEY` — Your Google Gemini API key.
    - *(Optional)* `VITE_LIVE_WS_URL` — Full `wss://.../live` URL of a dedicated Node WebSocket host if you want real-time Live Voice streaming enabled on Vercel.

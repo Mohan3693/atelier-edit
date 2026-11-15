@@ -1,4 +1,10 @@
 import type { SampleGarment } from '../types/stylist';
+import sampleJacquardSkirt from '../assets/images/sample_jacquard_skirt_1794675093317.jpg';
+import flatLaySampleCasual from '../assets/images/flatlay_sample_casual_1794675095827.jpg';
+import flatLaySampleBusiness from '../assets/images/flatlay_sample_business_1794675097059.jpg';
+import flatLaySampleNightOut from '../assets/images/flatlay_sample_nightout_1794675098012.jpg';
+import sampleEmeraldSlip from '../assets/images/sample_emerald_slip_1794675093539.jpg';
+import sampleHoundstoothBlazer from '../assets/images/sample_houndstooth_blazer_1794675095101.jpg';
 
 export const SAMPLE_WARDROBE: SampleGarment[] = [
   {
@@ -6,7 +12,7 @@ export const SAMPLE_WARDROBE: SampleGarment[] = [
     name: 'Botanical Jacquard Midi Skirt',
     subtitle: 'Cobalt, forest green & ochre woven A-line',
     category: 'Patterned Skirt',
-    imageUrl: '/src/assets/images/sample_jacquard_skirt_1794675093317.jpg',
+    imageUrl: sampleJacquardSkirt,
     challengeNote: 'Dense multi-color botanical weave that easily clashes with competing prints.',
     precomputedAnalysis: {
       itemName: 'Botanical Jacquard Midi Skirt',
@@ -33,7 +39,7 @@ export const SAMPLE_WARDROBE: SampleGarment[] = [
         moodSummary: 'Light-wash denim and crisp white cotton dial down the formal brocade for daylight.',
         colorHarmonyNote: 'Mid-tone indigo denim echoes the cobalt weave while tan woven leather picks up the warm ochre leaves.',
         colorPaletteCategory: 'Complementary',
-        flatLayImageUrl: '/src/assets/images/flatlay_sample_casual_1794675095827.jpg',
+        flatLayImageUrl: flatLaySampleCasual,
         flatLayStatus: 'ready',
         flatLayPrompt:
           'Overhead fashion flat-lay of a cobalt and ochre botanical jacquard midi skirt with a crisp white tee, cropped light-wash denim jacket, white leather sneakers, woven tan crossbody bag, and tortoiseshell sunglasses on alabaster studio paper.',
@@ -80,7 +86,7 @@ export const SAMPLE_WARDROBE: SampleGarment[] = [
         moodSummary: 'Architectural charcoal wool and a fine ivory knit turn the statement skirt boardroom-ready.',
         colorHarmonyNote: 'Soft ivory brightens near the face while charcoal wool grounds the midnight indigo base without harshness.',
         colorPaletteCategory: 'Neutral Tones',
-        flatLayImageUrl: '/src/assets/images/flatlay_sample_business_1794675097059.jpg',
+        flatLayImageUrl: flatLaySampleBusiness,
         flatLayStatus: 'ready',
         flatLayPrompt:
           'Overhead fashion flat-lay of a cobalt and ochre botanical jacquard midi skirt with a fine ivory merino turtleneck, tailored charcoal wool blazer, black pointed-toe loafers, structured black tote, and gold dress watch on alabaster studio paper.',
@@ -127,7 +133,7 @@ export const SAMPLE_WARDROBE: SampleGarment[] = [
         moodSummary: 'Fluid black silk and warm bronze metallics amplify the evening sheen of the jacquard.',
         colorHarmonyNote: 'Warm metallic bronze bridges the gold-ochre threadwork and dark navy ground under evening light.',
         colorPaletteCategory: 'Analogous',
-        flatLayImageUrl: '/src/assets/images/flatlay_sample_nightout_1794675098012.jpg',
+        flatLayImageUrl: flatLaySampleNightOut,
         flatLayStatus: 'ready',
         flatLayPrompt:
           'Overhead fashion flat-lay of a cobalt and ochre botanical jacquard midi skirt with a black silk camisole, strappy metallic bronze heeled sandals, mini black satin clutch, and sculptural gold drop earrings on alabaster studio paper.',
@@ -174,7 +180,7 @@ export const SAMPLE_WARDROBE: SampleGarment[] = [
     name: 'Emerald Silk Satin Slip Dress',
     subtitle: 'Bias-cut jewel-tone midi with delicate straps',
     category: 'Evening Dress',
-    imageUrl: '/src/assets/images/sample_emerald_slip_1794675093539.jpg',
+    imageUrl: sampleEmeraldSlip,
     challengeNote: 'Often feels overly formal or single-occasion without intentional daytime layering.',
   },
   {
@@ -182,7 +188,7 @@ export const SAMPLE_WARDROBE: SampleGarment[] = [
     name: 'Rust Houndstooth Wool Blazer',
     subtitle: 'Oversized heritage check in terracotta, espresso & cream',
     category: 'Statement Outerwear',
-    imageUrl: '/src/assets/images/sample_houndstooth_blazer_1794675095101.jpg',
+    imageUrl: sampleHoundstoothBlazer,
     challengeNote: 'Warm micro-check pattern can quickly look dated unless paired with modern proportions.',
   },
 ];

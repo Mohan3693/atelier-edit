@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import type { WardrobeGender } from '../types/stylist';
+import { BrandMark } from './BrandMark';
 
 export type AppPageId = 'closet' | 'mix' | 'saved' | 'profile';
 
@@ -109,9 +110,10 @@ export function Header({
             e.preventDefault();
             handleNavSelect('closet');
           }}
-          className="font-display text-xl sm:text-2xl font-semibold tracking-tight text-[#191816] whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#191816]"
+          className="inline-flex items-center gap-2.5 font-display text-xl sm:text-2xl font-semibold tracking-tight text-[#191816] whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#191816]"
         >
-          OutfitVault
+          <BrandMark className="w-7 h-7 sm:w-8 sm:h-8 shrink-0" />
+          <span>OutfitVault</span>
         </a>
 
         <nav

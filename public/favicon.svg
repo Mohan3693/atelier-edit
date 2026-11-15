@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="ov-bg" x1="8" y1="6" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9E1F3E" />
+      <stop offset="55%" stop-color="#7B152E" />
+      <stop offset="100%" stop-color="#4A0D1C" />
+    </linearGradient>
+    <linearGradient id="ov-gold" x1="20" y1="10" x2="44" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F6DFB6" />
+      <stop offset="100%" stop-color="#D4A662" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#ov-bg)" />
+  <rect
+    x="4.5"
+    y="4.5"
+    width="55"
+    height="55"
+    rx="12.5"
+    stroke="url(#ov-gold)"
+    stroke-opacity="0.38"
+    stroke-width="1.5"
+  />
+  <!-- Tailored hanger hook -->
+  <path
+    d="M27.2 19.5C27.2 16.4 29.35 14.2 32 14.2C34.65 14.2 36.8 16.25 36.8 18.8C36.8 20.95 35.3 22.35 33.4 23.35L32 24.1V26.4"
+    stroke="url(#ov-gold)"
+    stroke-width="3.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Structured garment shoulder & vault triangle -->
+  <path
+    d="M32 26.2L14.2 38.9C12.35 40.22 13.28 43.2 15.56 43.2H48.44C50.72 43.2 51.65 40.22 49.8 38.9L32 26.2Z"
+    stroke="#FAF8F4"
+    stroke-width="4.2"
+    stroke-linejoin="round"
+  />
+  <!-- Vault keyhole clasp center accent -->
+  <circle cx="32" cy="49.5" r="2.6" fill="url(#ov-gold)" />
+</svg>

@@ -1,5 +1,6 @@
 import { ArrowRight, LogOut } from 'lucide-react';
 import type { WardrobeGender } from '../types/stylist';
+import { BrandMark } from './BrandMark';
 
 interface GenderOnboardingViewProps {
   userName: string;
@@ -18,8 +19,9 @@ export function GenderOnboardingView({
     <div className="min-h-screen atelier-surface text-[#191816] flex flex-col">
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E5E0D8] shadow-[0_1px_8px_-4px_rgba(25,24,22,0.06)]">
         <div className="max-w-[1240px] mx-auto px-4 sm:px-6 h-14 lg:h-16 flex items-center justify-between gap-4">
-          <span className="font-display text-xl sm:text-2xl font-semibold tracking-tight text-[#191816] whitespace-nowrap">
-            OutfitVault
+          <span className="inline-flex items-center gap-2.5 font-display text-xl sm:text-2xl font-semibold tracking-tight text-[#191816] whitespace-nowrap">
+            <BrandMark className="w-7 h-7 sm:w-8 sm:h-8 shrink-0" />
+            <span>OutfitVault</span>
           </span>
           <div className="flex items-center gap-2.5">
             <span className="hidden sm:inline text-xs font-medium text-[#5E5A54]">

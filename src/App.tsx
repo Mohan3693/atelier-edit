@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Header, type AppPageId } from './components/Header';
+import { BrandMark } from './components/BrandMark';
 import { AuthGateView } from './components/AuthGateView';
 import { GenderOnboardingView } from './components/GenderOnboardingView';
 import { ClosetStudio } from './components/ClosetStudio';
@@ -1110,8 +1111,9 @@ export default function App() {
 
       <footer className="border-t border-[#E5E0D8] bg-white/95 backdrop-blur-sm">
         <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-center sm:text-left text-xs text-[#5E5A54]">
-          <span className="font-display text-base font-semibold text-[#191816]">
-            OutfitVault
+          <span className="inline-flex items-center gap-2 font-display text-base font-semibold text-[#191816]">
+            <BrandMark className="w-5 h-5 shrink-0" />
+            <span>OutfitVault</span>
           </span>
           <span>
             Personal Wardrobe Vault &middot; Real-Photo Outfit Composer &amp; Lookbook Studio

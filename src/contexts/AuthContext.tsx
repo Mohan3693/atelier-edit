@@ -8,9 +8,12 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  deleteUser,
   onAuthStateChanged,
+  reauthenticateWithPopup,
   signInWithPopup,
   signOut,
+  updateProfile,
   type User,
 } from 'firebase/auth';
 import { auth, googleAuthProvider } from '../lib/firebase';
@@ -22,6 +25,8 @@ interface AuthContextValue {
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
 }
 
@@ -62,6 +67,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const updateDisplayName = useCallback(async (displayName: string) => {
+    if (!auth.currentUser) {
+      throw new Error('You must be signed in to update your profile.');
+    }
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      throw new Error('Display name cannot be empty.');
+    }
+    await updateProfile(auth.currentUser, { displayName: trimmed });
+    await auth.currentUser.reload();
+    setUser(auth.currentUser ? ({ ...auth.currentUser } as User) : null);
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    if (!auth.currentUser) {
+      throw new Error('No authenticated user found.');
+    }
+    try {
+      await deleteUser(auth.currentUser);
+    } catch (err) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : '';
+      if (code === 'auth/requires-recent-login') {
+        await reauthenticateWithPopup(auth.currentUser, googleAuthProvider);
+        await deleteUser(auth.currentUser);
+      } else {
+        throw err;
+      }
+    }
+  }, []);
+
   const getIdToken = useCallback(async (): Promise<string | null> => {
     if (!auth.currentUser) return null;
     try {
@@ -81,9 +119,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthError,
       signInWithGoogle,
       signOutUser,
+      updateDisplayName,
+      deleteAccount,
       getIdToken,
     }),
-    [user, loading, authError, clearAuthError, signInWithGoogle, signOutUser, getIdToken],
+    [
+      user,
+      loading,
+      authError,
+      clearAuthError,
+      signInWithGoogle,
+      signOutUser,
+      updateDisplayName,
+      deleteAccount,
+      getIdToken,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

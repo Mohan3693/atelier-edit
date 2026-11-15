@@ -4,6 +4,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   serverTimestamp,
@@ -452,5 +453,65 @@ export async function recordAnalysisInFirestore(
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+export async function updateUserDisplayNameInFirestore(
+  user: User,
+  displayName: string,
+): Promise<void> {
+  if (!user.emailVerified) return;
+  const path = `users/${user.uid}/private/profile`;
+  const ref = doc(db, 'users', user.uid, 'private', 'profile');
+  const cleanName = clampString(displayName, 120, '');
+  const email = clampString(user.email, 320, 'user@example.com');
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      await updateDoc(ref, {
+        email,
+        displayName: cleanName,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(ref, {
+        uid: user.uid,
+        email,
+        displayName: cleanName,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+async function deleteOwnedSubcollection(uid: string, subcollectionName: string): Promise<void> {
+  const path = `users/${uid}/${subcollectionName}`;
+  const q = query(collection(db, 'users', uid, subcollectionName), where('uid', '==', uid));
+  try {
+    const snap = await getDocs(q);
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function deleteAllUserWardrobeItemsFromFirestore(uid: string): Promise<void> {
+  await deleteOwnedSubcollection(uid, 'wardrobeItems');
+}
+
+export async function deleteAllUserDataFromFirestore(uid: string): Promise<void> {
+  await deleteOwnedSubcollection(uid, 'wardrobeItems');
+  await deleteOwnedSubcollection(uid, 'savedLooks');
+  await deleteOwnedSubcollection(uid, 'analyses');
+  await deleteOwnedSubcollection(uid, 'preferences');
+
+  const profilePath = `users/${uid}/private/profile`;
+  try {
+    await deleteDoc(doc(db, 'users', uid, 'private', 'profile'));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, profilePath);
   }
 }

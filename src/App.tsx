@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Header } from './components/Header';
+import { Header, type AppPageId } from './components/Header';
 import { AuthGateView } from './components/AuthGateView';
 import { GenderOnboardingView } from './components/GenderOnboardingView';
-import { MobileBottomNav, type AppSectionId } from './components/MobileBottomNav';
 import { ClosetStudio } from './components/ClosetStudio';
 import { AnalysisStrip } from './components/AnalysisStrip';
 import { OutfitGrid } from './components/OutfitGrid';
@@ -12,10 +11,13 @@ import {
   SavedLooksSection,
   type HistoryAnalysisEntry,
 } from './components/SavedLooksSection';
+import { ProfilePage } from './components/ProfilePage';
 import { LookLightboxModal } from './components/LookLightboxModal';
 import { useAuth } from './contexts/AuthContext';
 import { SAMPLE_WARDROBE } from './data/sampleWardrobe';
 import {
+  deleteAllUserDataFromFirestore,
+  deleteAllUserWardrobeItemsFromFirestore,
   deleteSavedLookInFirestore,
   deleteWardrobeItemInFirestore,
   loadUserPreferencesFromFirestore,
@@ -24,6 +26,7 @@ import {
   subscribeSavedLooksInFirestore,
   subscribeWardrobeItemsInFirestore,
   syncUserProfileToFirestore,
+  updateUserDisplayNameInFirestore,
   upsertSavedLookInFirestore,
   upsertWardrobeItemInFirestore,
 } from './lib/firestoreLooks';
@@ -39,6 +42,7 @@ import type {
 import {
   composeClosetOutfitsApi,
   deleteSavedLookSqlApi,
+  deleteUserAccountSqlApi,
   fetchWardrobeHistorySqlApi,
   recordAnalysisSqlApi,
   recordVoiceSessionSqlApi,
@@ -54,6 +58,7 @@ import {
 } from './utils/stylist';
 import {
   cleanFileLabel,
+  clearClosetItemsLocal,
   deleteClosetItemLocal,
   getCategoryLabel,
   loadClosetItemsLocal,
@@ -79,6 +84,8 @@ export default function App() {
     clearAuthError,
     signInWithGoogle,
     signOutUser,
+    updateDisplayName,
+    deleteAccount,
     getIdToken,
   } = useAuth();
 
@@ -113,7 +120,7 @@ export default function App() {
     outfit: OutfitOption;
     anchorItemName: string;
   } | null>(null);
-  const [activeSection, setActiveSection] = useState<AppSectionId>('style-studio');
+  const [activePage, setActivePage] = useState<AppPageId>('closet');
 
   useEffect(() => {
     void loadClosetItemsLocal().then((localItems) => {
@@ -144,10 +151,10 @@ export default function App() {
       setRecentAnalyses([]);
       setGenderConfirmed(false);
       setSavedServerGender(undefined);
+      setActivePage('closet');
       return;
     }
 
-    // Check if the user has already picked Male/Female during this login session
     try {
       const sessionChoice = window.sessionStorage.getItem(sessionGenderKey(user.uid));
       if (sessionChoice === 'male' || sessionChoice === 'female') {
@@ -287,10 +294,16 @@ export default function App() {
     }
   };
 
+  const navigateToPage = (pageId: AppPageId) => {
+    setActivePage(pageId);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleSelectLoginGender = (chosenGender: 'male' | 'female') => {
     setGender(chosenGender);
     setSavedServerGender(chosenGender);
     setGenderConfirmed(true);
+    setActivePage('closet');
     if (user) {
       try {
         window.sessionStorage.setItem(sessionGenderKey(user.uid), chosenGender);
@@ -312,44 +325,120 @@ export default function App() {
     setGenderConfirmed(false);
     setAnalysis(null);
     setOutfits([]);
+    setActivePage('closet');
     await signOutUser();
   };
 
-  useEffect(() => {
-    const sectionIds: AppSectionId[] = [
-      'style-studio',
-      'outfit-looks',
-      'create-edit',
-      'voice-stylist',
-      'saved-looks',
-    ];
-    if (typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const id = entry.target.id as AppSectionId;
-            if (sectionIds.includes(id)) {
-              setActiveSection(id);
-            }
-          }
-        }
-      },
-      { rootMargin: '-35% 0px -50% 0px', threshold: 0.01 },
-    );
-    for (const id of sectionIds) {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, [outfits.length]);
+  const handleUpdateDisplayName = async (nextName: string) => {
+    if (!user) return;
+    await updateDisplayName(nextName);
+    await updateUserDisplayNameInFirestore(user, nextName);
+  };
 
-  const handleNavigateSection = (sectionId: AppSectionId) => {
-    setActiveSection(sectionId);
-    const el = document.getElementById(sectionId);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const handleExportProfileData = () => {
+    if (!user) return;
+    const exportPayload = {
+      exportedAt: new Date().toISOString(),
+      account: {
+        uid: user.uid,
+        displayName: user.displayName,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        createdAt: user.metadata?.creationTime ?? null,
+      },
+      preferences: {
+        gender,
+        season,
+        aesthetic,
+        preferredVoice,
+      },
+      closetItems: closetItems.map(({ id, gender: itemGender, category, label, colorName, colorHex, createdAt }) => ({
+        id,
+        gender: itemGender,
+        category,
+        label,
+        colorName,
+        colorHex,
+        createdAt,
+      })),
+      savedLooks: savedLooks.map((look) => ({
+        id: look.id,
+        savedAt: look.savedAt,
+        anchorItemName: look.anchorItemName,
+        occasion: look.outfit.occasion,
+        title: look.outfit.title,
+        moodSummary: look.outfit.moodSummary,
+        colorHarmonyNote: look.outfit.colorHarmonyNote,
+        pieces: look.outfit.pieces.map((p) => ({
+          slot: p.slot,
+          name: p.name,
+          colorName: p.colorName,
+          material: p.material,
+        })),
+      })),
+      recentSessions: recentAnalyses.map(({ id, itemName, category, season: s, aesthetic: a, createdAt }) => ({
+        id,
+        itemName,
+        category,
+        season: s,
+        aesthetic: a,
+        createdAt,
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `atelier-edit-wardrobe-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleClearAllCloset = async () => {
+    if (user) {
+      await deleteAllUserWardrobeItemsFromFirestore(user.uid);
     }
+    await clearClosetItemsLocal();
+    setClosetItems([]);
+    setAnchorItemId(null);
+    setOutfits([]);
+    setAnalysis(null);
+    setComposeError(null);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    const uid = user.uid;
+
+    await deleteAllUserDataFromFirestore(uid);
+
+    const token = await getIdToken();
+    if (token) {
+      await deleteUserAccountSqlApi(token).catch(() => {});
+    }
+
+    await deleteAccount();
+
+    await clearClosetItemsLocal();
+    try {
+      window.localStorage.removeItem(SAVED_LOOKS_STORAGE_KEY);
+      window.localStorage.removeItem(GENDER_STORAGE_KEY);
+      window.sessionStorage.removeItem(sessionGenderKey(uid));
+    } catch {
+      // Ignore storage cleanup errors
+    }
+
+    setClosetItems([]);
+    setAnchorItemId(null);
+    setSavedLooks([]);
+    setOutfits([]);
+    setAnalysis(null);
+    setRecentAnalyses([]);
+    setGenderConfirmed(false);
+    setActivePage('closet');
   };
 
   const handleUploadFilesToCategory = async (
@@ -514,7 +603,6 @@ export default function App() {
     setIsComposing(true);
 
     try {
-      // Keep payload fast and safely under Vercel 4.5MB limit by sending compact 360px sync thumbnails
       const payloadItems = closetItems.slice(0, 20).map((item) => ({
         id: item.id,
         category: item.category,
@@ -598,9 +686,7 @@ export default function App() {
         });
       }
 
-      setTimeout(() => {
-        handleNavigateSection('outfit-looks');
-      }, 120);
+      navigateToPage('outfits');
     } catch (err) {
       setComposeError(
         err instanceof Error
@@ -765,7 +851,7 @@ export default function App() {
         pieces: resolveOutfitPiecesWithCloset(o.pieces, closetItems),
       })),
     );
-    handleNavigateSection('outfit-looks');
+    navigateToPage('outfits');
   };
 
   const handleVoiceSessionEnded = (summary: {
@@ -808,23 +894,21 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F8F7] text-[#141413] flex flex-col pb-16 lg:pb-0">
+    <div className="min-h-screen bg-[#F8F8F7] text-[#141413] flex flex-col">
       <Header
         savedCount={savedLooks.length}
         closetCount={closetItems.length}
-        hasOutfits={outfits.length > 0}
-        activeSection={activeSection}
+        activePage={activePage}
         gender={gender}
         user={user}
-        authLoading={authLoading}
-        onSignInWithGoogle={signInWithGoogle}
         onSignOut={() => void handleSignOutClick()}
-        onSwitchGenderRequest={() => setGenderConfirmed(false)}
         onTriggerUpload={() => {
-          handleNavigateSection('style-studio');
-          document.getElementById('closet-multi-file-input')?.click();
+          navigateToPage('closet');
+          window.setTimeout(() => {
+            document.getElementById('closet-multi-file-input')?.click();
+          }, 60);
         }}
-        onNavigateSection={handleNavigateSection}
+        onNavigatePage={navigateToPage}
       />
 
       {authError && (
@@ -844,89 +928,162 @@ export default function App() {
       )}
 
       <main className="flex-1">
-
-        <ClosetStudio
-          gender={gender}
-          season={season}
-          aesthetic={aesthetic}
-          closetItems={closetItems}
-          anchorItemId={anchorItemId}
-          isComposing={isComposing}
-          composeError={composeError}
-          onSeasonChange={(nextSeason) => {
-            setSeason(nextSeason);
-            void persistUserPrefs(gender, nextSeason, aesthetic, preferredVoice);
-          }}
-          onAestheticChange={(nextAesthetic) => {
-            setAesthetic(nextAesthetic);
-            void persistUserPrefs(gender, season, nextAesthetic, preferredVoice);
-          }}
-          onUploadFilesToCategory={handleUploadFilesToCategory}
-          onUpdateItemLabel={handleUpdateItemLabel}
-          onMoveItemCategory={handleMoveItemCategory}
-          onDeleteItem={handleDeleteItem}
-          onToggleAnchorItem={(id) =>
-            setAnchorItemId((curr) => (curr === id ? null : id))
-          }
-          onLoadStarterCloset={handleLoadStarterCloset}
-          onGenerateOutfits={() => void handleGenerateOutfitsFromCloset()}
-        />
-
-        {analysis && (
-          <AnalysisStrip
-            analysis={analysis}
-            anchorImageUrl={getRepresentativeAnchorImage()}
-          />
-        )}
-
-        {outfits.length > 0 && analysis && (
-          <OutfitGrid
-            outfits={outfits}
+        {activePage === 'closet' && (
+          <ClosetStudio
+            gender={gender}
+            season={season}
+            aesthetic={aesthetic}
             closetItems={closetItems}
-            anchorPalette={analysis.palette}
-            anchorImageUrl={getRepresentativeAnchorImage()}
-            anchorItemName={analysis.itemName}
-            savedLooks={savedLooks}
-            isRefreshingAll={isComposing}
-            onSwapPiece={handleSwapPiece}
-            onToggleSave={(o) => void handleToggleSave(o)}
-            onInspectLook={(outfit) =>
-              setLightboxState({ outfit, anchorItemName: analysis.itemName })
+            anchorItemId={anchorItemId}
+            isComposing={isComposing}
+            composeError={composeError}
+            onSeasonChange={(nextSeason) => {
+              setSeason(nextSeason);
+              void persistUserPrefs(gender, nextSeason, aesthetic, preferredVoice);
+            }}
+            onAestheticChange={(nextAesthetic) => {
+              setAesthetic(nextAesthetic);
+              void persistUserPrefs(gender, season, nextAesthetic, preferredVoice);
+            }}
+            onUploadFilesToCategory={handleUploadFilesToCategory}
+            onUpdateItemLabel={handleUpdateItemLabel}
+            onMoveItemCategory={handleMoveItemCategory}
+            onDeleteItem={handleDeleteItem}
+            onToggleAnchorItem={(id) =>
+              setAnchorItemId((curr) => (curr === id ? null : id))
             }
-            onRefreshAllOutfits={() => void handleGenerateOutfitsFromCloset()}
-            onExportAllToPdf={handleExportAllToPdf}
+            onLoadStarterCloset={handleLoadStarterCloset}
+            onGenerateOutfits={() => void handleGenerateOutfitsFromCloset()}
           />
         )}
 
-        <MixMatchStudio
-          gender={gender}
-          closetItems={closetItems}
-          onSaveCustomLook={handleSaveCustomLook}
-        />
+        {activePage === 'outfits' &&
+          (outfits.length > 0 && analysis ? (
+            <>
+              <AnalysisStrip
+                analysis={analysis}
+                anchorImageUrl={getRepresentativeAnchorImage()}
+              />
+              <OutfitGrid
+                outfits={outfits}
+                closetItems={closetItems}
+                anchorPalette={analysis.palette}
+                anchorImageUrl={getRepresentativeAnchorImage()}
+                anchorItemName={analysis.itemName}
+                savedLooks={savedLooks}
+                isRefreshingAll={isComposing}
+                onSwapPiece={handleSwapPiece}
+                onToggleSave={(o) => void handleToggleSave(o)}
+                onInspectLook={(outfit) =>
+                  setLightboxState({ outfit, anchorItemName: analysis.itemName })
+                }
+                onRefreshAllOutfits={() => void handleGenerateOutfitsFromCloset()}
+                onExportAllToPdf={handleExportAllToPdf}
+              />
+            </>
+          ) : (
+            <section
+              aria-label="Generated outfits empty state"
+              className="max-w-[1240px] mx-auto px-4 sm:px-6 py-12 sm:py-16"
+            >
+              <div className="bg-white border border-[#E4E4E7] rounded-2xl p-8 sm:p-12 text-center space-y-4 max-w-xl mx-auto">
+                <p className="text-xs font-medium text-[#575652]">3 Styled Outfits</p>
+                <h1 className="font-display text-3xl font-semibold text-[#141413] tracking-tight">
+                  No Outfits Generated Yet
+                </h1>
+                <p className="text-sm text-[#575652] leading-relaxed">
+                  Upload at least 2 photos from your wardrobe in My Closet and click Generate 3
+                  Outfits to view Casual, Business, and Night Out flat-lays here.
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => navigateToPage('closet')}
+                    className="min-h-11 px-6 py-2.5 text-xs font-semibold text-white bg-[#141413] rounded-xl hover:bg-[#2C2C2A] transition-colors cursor-pointer"
+                  >
+                    Go to My Closet
+                  </button>
+                </div>
+              </div>
+            </section>
+          ))}
 
-        <VoiceStylistSection
-          analysis={analysis}
-          outfits={outfits}
-          preferredVoice={preferredVoice}
-          onVoiceChange={(nextVoice) => {
-            setPreferredVoice(nextVoice);
-            void persistUserPrefs(gender, season, aesthetic, nextVoice);
-          }}
-          onVoiceSessionEnded={handleVoiceSessionEnded}
-        />
+        {activePage === 'mix' && (
+          <MixMatchStudio
+            gender={gender}
+            closetItems={closetItems}
+            onSaveCustomLook={handleSaveCustomLook}
+          />
+        )}
 
-        <SavedLooksSection
-          savedLooks={savedLooks}
-          closetItems={closetItems}
-          isSignedIn={Boolean(user)}
-          recentAnalyses={recentAnalyses}
-          onSignInPrompt={signInWithGoogle}
-          onRestoreAnalysis={handleRestoreAnalysis}
-          onRemoveSavedLook={handleRemoveSavedLook}
-          onInspectSavedLook={(outfit, anchorItemName) =>
-            setLightboxState({ outfit, anchorItemName })
-          }
-        />
+        {activePage === 'voice' && (
+          <VoiceStylistSection
+            analysis={analysis}
+            outfits={outfits}
+            preferredVoice={preferredVoice}
+            onVoiceChange={(nextVoice) => {
+              setPreferredVoice(nextVoice);
+              void persistUserPrefs(gender, season, aesthetic, nextVoice);
+            }}
+            onVoiceSessionEnded={handleVoiceSessionEnded}
+          />
+        )}
+
+        {activePage === 'saved' && (
+          <SavedLooksSection
+            savedLooks={savedLooks}
+            closetItems={closetItems}
+            isSignedIn={Boolean(user)}
+            recentAnalyses={recentAnalyses}
+            onSignInPrompt={signInWithGoogle}
+            onRestoreAnalysis={handleRestoreAnalysis}
+            onRemoveSavedLook={handleRemoveSavedLook}
+            onInspectSavedLook={(outfit, anchorItemName) =>
+              setLightboxState({ outfit, anchorItemName })
+            }
+          />
+        )}
+
+        {activePage === 'profile' && (
+          <ProfilePage
+            user={user}
+            gender={gender}
+            season={season}
+            aesthetic={aesthetic}
+            preferredVoice={preferredVoice}
+            closetCount={closetItems.length}
+            savedCount={savedLooks.length}
+            analysisCount={recentAnalyses.length}
+            onUpdateDisplayName={handleUpdateDisplayName}
+            onGenderChange={(nextGender) => {
+              setGender(nextGender);
+              setSavedServerGender(nextGender);
+              try {
+                window.sessionStorage.setItem(sessionGenderKey(user.uid), nextGender);
+              } catch {
+                // Ignore session storage errors
+              }
+              void persistUserPrefs(nextGender, season, aesthetic, preferredVoice);
+            }}
+            onSeasonChange={(nextSeason) => {
+              setSeason(nextSeason);
+              void persistUserPrefs(gender, nextSeason, aesthetic, preferredVoice);
+            }}
+            onAestheticChange={(nextAesthetic) => {
+              setAesthetic(nextAesthetic);
+              void persistUserPrefs(gender, season, nextAesthetic, preferredVoice);
+            }}
+            onVoiceChange={(nextVoice) => {
+              setPreferredVoice(nextVoice);
+              void persistUserPrefs(gender, season, aesthetic, nextVoice);
+            }}
+            onNavigatePage={navigateToPage}
+            onExportData={handleExportProfileData}
+            onClearCloset={handleClearAllCloset}
+            onSignOut={handleSignOutClick}
+            onDeleteAccount={handleDeleteAccount}
+          />
+        )}
       </main>
 
       <footer className="border-t border-[#E4E4E7] bg-white">
@@ -935,7 +1092,7 @@ export default function App() {
             Atelier Edit
           </span>
           <span>
-            Personal Wardrobe Vault · Real-Photo Outfit Composer &amp; Lookbook Studio
+            Personal Wardrobe Vault &middot; Real-Photo Outfit Composer &amp; Lookbook Studio
           </span>
         </div>
       </footer>
@@ -951,14 +1108,6 @@ export default function App() {
         anchorItemName={lightboxState?.anchorItemName ?? ''}
         anchorImageUrl={getRepresentativeAnchorImage()}
         onClose={() => setLightboxState(null)}
-      />
-
-      <MobileBottomNav
-        activeSection={activeSection}
-        hasOutfits={outfits.length > 0}
-        closetCount={closetItems.length}
-        savedCount={savedLooks.length}
-        onNavigateSection={handleNavigateSection}
       />
     </div>
   );

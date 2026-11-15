@@ -9,6 +9,7 @@ import {
   recordWardrobeAnalysisSql,
   upsertSavedOutfitSql,
 } from '../db/wardrobe.ts';
+import { deleteUserAccountSql } from '../db/users.ts';
 import { requireAuth, type AuthRequest } from '../middleware/auth.ts';
 
 export function getAiClient(): GoogleGenAI | null {
@@ -877,6 +878,21 @@ export function createApiApp(): express.Express {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Unable to record voice session.';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  app.delete('/api/wardrobe/account', requireAuth, async (req: AuthRequest, res) => {
+    if (!req.dbUser) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    try {
+      await deleteUserAccountSql(req.dbUser.id);
+      res.json({ ok: true });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to delete account history.';
       res.status(500).json({ error: message });
     }
   });

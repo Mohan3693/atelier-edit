@@ -381,3 +381,15 @@ export async function recordVoiceSessionSqlApi(
     throw new Error('Unable to save voice session log.');
   }
 }
+
+export async function deleteUserAccountSqlApi(idToken: string): Promise<void> {
+  const response = await fetch('/api/wardrobe/account', {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Unable to remove account records.');
+  }
+}

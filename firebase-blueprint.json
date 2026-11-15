@@ -1,0 +1,296 @@
+{
+  "entities": {
+    "UserPrivateProfile": {
+      "title": "UserPrivateProfile",
+      "description": "Private user identity and email profile isolated under /users/{userId}/private/profile.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the account owner."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 320,
+          "description": "Verified Google account email address."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Display name from Google profile."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last profile update."
+        }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "UserStylePreference": {
+      "title": "UserStylePreference",
+      "description": "User styling defaults and preferred voice stylist persona.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner Firebase UID."
+        },
+        "preferredSeason": {
+          "type": "string",
+          "enum": ["All-Season", "Spring / Summer", "Autumn / Winter"],
+          "description": "Default season filter for styling recommendations."
+        },
+        "preferredAesthetic": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "description": "Default styling aesthetic direction."
+        },
+        "preferredVoice": {
+          "type": "string",
+          "enum": ["Zephyr", "Kore", "Puck", "Charon", "Fenrir"],
+          "description": "Preferred Gemini Live voice persona."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "preferredSeason",
+        "preferredAesthetic",
+        "preferredVoice",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SavedLookDoc": {
+      "title": "SavedLookDoc",
+      "description": "A user's saved flat-lay outfit lookbook entry stored in Firestore.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique look identifier matching the document ID."
+        },
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner Firebase UID."
+        },
+        "anchorItemName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "description": "Name of the centerpiece garment."
+        },
+        "anchorImageRef": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 500,
+          "description": "Safe relative asset path or reference label (no raw multi-megabyte data URLs)."
+        },
+        "occasion": {
+          "type": "string",
+          "enum": ["Casual", "Business", "Night Out"],
+          "description": "Outfit occasion category."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "description": "Editorial look title."
+        },
+        "moodSummary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400,
+          "description": "Editorial styling mood summary."
+        },
+        "colorHarmonyNote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Explanation of color harmony across pieces."
+        },
+        "colorPaletteCategory": {
+          "type": "string",
+          "enum": ["Monochromatic", "Complementary", "Neutral Tones", "Analogous"],
+          "description": "Color harmony category."
+        },
+        "piecesSummary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1600,
+          "description": "Formatted breakdown of companion pieces and colors."
+        },
+        "paletteHexes": {
+          "type": "array",
+          "description": "Bounded list of up to 6 extracted hex colors."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "uid",
+        "anchorItemName",
+        "anchorImageRef",
+        "occasion",
+        "title",
+        "moodSummary",
+        "colorHarmonyNote",
+        "colorPaletteCategory",
+        "piecesSummary",
+        "paletteHexes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WardrobeAnalysisDoc": {
+      "title": "WardrobeAnalysisDoc",
+      "description": "Recorded garment color palette and style analysis session for a user.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique analysis record ID."
+        },
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner Firebase UID."
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "description": "Analyzed garment name."
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Garment category."
+        },
+        "season": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Requested season context."
+        },
+        "aesthetic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Requested aesthetic direction."
+        },
+        "stylePersonality": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Identified style personality."
+        },
+        "stylingStrategy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600,
+          "description": "Core stylist anchor advice."
+        },
+        "paletteHexes": {
+          "type": "array",
+          "description": "Bounded list of up to 6 extracted hex colors."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "uid",
+        "itemName",
+        "category",
+        "season",
+        "aesthetic",
+        "stylePersonality",
+        "stylingStrategy",
+        "paletteHexes",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/private/profile": {
+      "schema": {
+        "$ref": "#/entities/UserPrivateProfile"
+      },
+      "description": "Owner-only private PII profile storing verified email and display name."
+    },
+    "/users/{userId}/preferences/{prefId}": {
+      "schema": {
+        "$ref": "#/entities/UserStylePreference"
+      },
+      "description": "Owner-only default styling and voice preferences."
+    },
+    "/users/{userId}/savedLooks/{lookId}": {
+      "schema": {
+        "$ref": "#/entities/SavedLookDoc"
+      },
+      "description": "Owner-only saved flat-lay outfit combinations."
+    },
+    "/users/{userId}/analyses/{analysisId}": {
+      "schema": {
+        "$ref": "#/entities/WardrobeAnalysisDoc"
+      },
+      "description": "Owner-only wardrobe garment analysis history."
+    }
+  }
+}

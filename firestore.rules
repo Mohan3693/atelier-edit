@@ -1,0 +1,271 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedOwner(userId) {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && isValidId(userId)
+        && request.auth.uid == userId;
+    }
+
+    function isValidBoundedHexArray(arr) {
+      return arr is list
+        && arr.size() <= 6
+        && (arr.size() == 0 || (arr[0] is string && arr[0].size() >= 4 && arr[0].size() <= 16));
+    }
+
+    function isValidUserPrivateProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 320
+        && data.displayName is string && data.displayName.size() <= 120
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserStylePreference(data, userId) {
+      return data.keys().hasAll([
+          'uid',
+          'preferredSeason',
+          'preferredAesthetic',
+          'preferredVoice',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'preferredSeason',
+          'preferredAesthetic',
+          'preferredVoice',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.preferredSeason is string
+        && data.preferredSeason in ['All-Season', 'Spring / Summer', 'Autumn / Winter']
+        && data.preferredAesthetic is string
+        && data.preferredAesthetic.size() >= 2
+        && data.preferredAesthetic.size() <= 64
+        && data.preferredVoice is string
+        && data.preferredVoice in ['Zephyr', 'Kore', 'Puck', 'Charon', 'Fenrir']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSavedLookDoc(data, userId, lookId) {
+      return data.keys().hasAll([
+          'id',
+          'uid',
+          'anchorItemName',
+          'anchorImageRef',
+          'occasion',
+          'title',
+          'moodSummary',
+          'colorHarmonyNote',
+          'colorPaletteCategory',
+          'piecesSummary',
+          'paletteHexes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'uid',
+          'anchorItemName',
+          'anchorImageRef',
+          'occasion',
+          'title',
+          'moodSummary',
+          'colorHarmonyNote',
+          'colorPaletteCategory',
+          'piecesSummary',
+          'paletteHexes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == lookId
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.anchorItemName is string && data.anchorItemName.size() >= 1 && data.anchorItemName.size() <= 140
+        && data.anchorImageRef is string && data.anchorImageRef.size() <= 500
+        && data.occasion is string && data.occasion in ['Casual', 'Business', 'Night Out']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && data.moodSummary is string && data.moodSummary.size() >= 1 && data.moodSummary.size() <= 400
+        && data.colorHarmonyNote is string && data.colorHarmonyNote.size() >= 1 && data.colorHarmonyNote.size() <= 500
+        && data.colorPaletteCategory is string
+        && data.colorPaletteCategory in ['Monochromatic', 'Complementary', 'Neutral Tones', 'Analogous']
+        && data.piecesSummary is string && data.piecesSummary.size() >= 1 && data.piecesSummary.size() <= 1600
+        && isValidBoundedHexArray(data.paletteHexes)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWardrobeAnalysisDoc(data, userId, analysisId) {
+      return data.keys().hasAll([
+          'id',
+          'uid',
+          'itemName',
+          'category',
+          'season',
+          'aesthetic',
+          'stylePersonality',
+          'stylingStrategy',
+          'paletteHexes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'uid',
+          'itemName',
+          'category',
+          'season',
+          'aesthetic',
+          'stylePersonality',
+          'stylingStrategy',
+          'paletteHexes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == analysisId
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 140
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 80
+        && data.season is string && data.season.size() >= 1 && data.season.size() <= 64
+        && data.aesthetic is string && data.aesthetic.size() >= 1 && data.aesthetic.size() <= 64
+        && data.stylePersonality is string && data.stylePersonality.size() >= 1 && data.stylePersonality.size() <= 120
+        && data.stylingStrategy is string && data.stylingStrategy.size() >= 1 && data.stylingStrategy.size() <= 600
+        && isValidBoundedHexArray(data.paletteHexes)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId}/private/profile {
+      allow get: if isVerifiedOwner(userId);
+      allow list: if false;
+      allow create: if isVerifiedOwner(userId)
+        && isValidUserPrivateProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedOwner(userId)
+        && isValidUserPrivateProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'updatedAt']);
+      allow delete: if isVerifiedOwner(userId);
+    }
+
+    match /users/{userId}/preferences/{prefId} {
+      allow get: if isVerifiedOwner(userId) && isValidId(prefId);
+      allow list: if isVerifiedOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedOwner(userId)
+        && isValidId(prefId)
+        && isValidUserStylePreference(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedOwner(userId)
+        && isValidId(prefId)
+        && isValidUserStylePreference(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'preferredSeason',
+          'preferredAesthetic',
+          'preferredVoice',
+          'updatedAt'
+        ]);
+      allow delete: if isVerifiedOwner(userId) && isValidId(prefId);
+    }
+
+    match /users/{userId}/savedLooks/{lookId} {
+      allow get: if isVerifiedOwner(userId) && isValidId(lookId);
+      allow list: if isVerifiedOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedOwner(userId)
+        && isValidId(lookId)
+        && isValidSavedLookDoc(incoming(), userId, lookId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedOwner(userId)
+        && isValidId(lookId)
+        && isValidSavedLookDoc(incoming(), userId, lookId)
+        && incoming().id == existing().id
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'anchorItemName',
+          'anchorImageRef',
+          'occasion',
+          'title',
+          'moodSummary',
+          'colorHarmonyNote',
+          'colorPaletteCategory',
+          'piecesSummary',
+          'paletteHexes',
+          'updatedAt'
+        ]);
+      allow delete: if isVerifiedOwner(userId) && isValidId(lookId);
+    }
+
+    match /users/{userId}/analyses/{analysisId} {
+      allow get: if isVerifiedOwner(userId) && isValidId(analysisId);
+      allow list: if isVerifiedOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedOwner(userId)
+        && isValidId(analysisId)
+        && isValidWardrobeAnalysisDoc(incoming(), userId, analysisId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedOwner(userId)
+        && isValidId(analysisId)
+        && isValidWardrobeAnalysisDoc(incoming(), userId, analysisId)
+        && incoming().id == existing().id
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'itemName',
+          'category',
+          'season',
+          'aesthetic',
+          'stylePersonality',
+          'stylingStrategy',
+          'paletteHexes',
+          'updatedAt'
+        ]);
+      allow delete: if isVerifiedOwner(userId) && isValidId(analysisId);
+    }
+  }
+}

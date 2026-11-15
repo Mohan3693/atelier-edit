@@ -9,6 +9,7 @@ import {
 } from '../db/wardrobe.ts';
 import { deleteUserAccountSql } from '../db/users.ts';
 import { requireAuth, type AuthRequest } from '../middleware/auth.ts';
+import { normalizeCategoryForGender } from '../utils/wardrobe.ts';
 
 export function getAiClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -224,12 +225,175 @@ const CLOSET_COMPOSE_SCHEMA = {
   required: ['itemAnalysis', 'outfits'],
 };
 
+const ITEM_CATEGORIZE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    items: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          tempId: { type: Type.STRING },
+          category: { type: Type.STRING },
+          label: { type: Type.STRING },
+          colorName: { type: Type.STRING },
+          colorHex: { type: Type.STRING },
+        },
+        required: ['tempId', 'category', 'label', 'colorName', 'colorHex'],
+      },
+    },
+  },
+  required: ['items'],
+};
+
 export function createApiApp(): express.Express {
   const app = express();
   app.use(express.json({ limit: '20mb' }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  app.post('/api/style/categorize-items', async (req, res) => {
+    const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const validItems: Array<{
+      tempId: string;
+      filename: string;
+      parsed: { mimeType: string; data: string };
+    }> = [];
+
+    for (const raw of rawItems.slice(0, 12)) {
+      if (!raw || typeof raw.tempId !== 'string') continue;
+      const parsed = parseImageDataUrl(raw.imageDataUrl);
+      if (!parsed) continue;
+      validItems.push({
+        tempId: raw.tempId.trim().slice(0, 80),
+        filename:
+          typeof raw.filename === 'string' ? raw.filename.trim().slice(0, 100) : '',
+        parsed,
+      });
+    }
+
+    if (validItems.length === 0) {
+      res.status(400).json({ error: 'No valid images provided to categorize.' });
+      return;
+    }
+
+    const ai = getAiClient();
+    if (!ai) {
+      res.status(503).json({
+        error: 'GEMINI_API_KEY is not configured in environment variables.',
+        requiresPaidKey: false,
+      });
+      return;
+    }
+
+    const gender =
+      req.body?.gender === 'male' || req.body?.gender === 'female'
+        ? req.body.gender
+        : 'unisex';
+
+    try {
+      const parts: Array<
+        { text: string } | { inlineData: { mimeType: string; data: string } }
+      > = [];
+
+      for (const item of validItems) {
+        parts.push({
+          text: `ITEM tempId="${item.tempId}"${item.filename ? ` | originalFilename="${item.filename}"` : ''}`,
+        });
+        parts.push({
+          inlineData: {
+            mimeType: item.parsed.mimeType,
+            data: item.parsed.data,
+          },
+        });
+      }
+
+      const allowedList =
+        gender === 'male'
+          ? '"tops" (shirts, t-shirts, polos, sweaters, hoodies), "outerwear" (jackets, blazers, coats, overshirts), "bottoms" (trousers, jeans, chinos, shorts), "shoes" (sneakers, loafers, boots, dress shoes, sandals), "watches" (wristwatches, smartwatches), "eyewear" (eyeglasses, specs, sunglasses), "bags" (backpacks, totes, messenger bags, duffels), "accessories" (belts, caps, hats, ties, jewelry, scarves)'
+          : '"tops" (tops, blouses, shirts, t-shirts, sweaters), "dresses" (dresses, jumpsuits, gowns, rompers), "outerwear" (coats, blazers, jackets, cardigans), "bottoms" (skirts, trousers, jeans, shorts), "shoes" (heels, flats, sneakers, loafers, boots, sandals), "bags" (handbags, totes, shoulder bags, clutches, backpacks), "watches" (wristwatches, bracelet watches, smartwatches), "eyewear" (eyeglasses, optical specs, sunglasses), "accessories" (belts, jewelry, necklaces, earrings, scarves, hats)';
+
+      const prompt = [
+        `Inspect each uploaded wardrobe photo visually and classify every item accurately into one of these category IDs: ${allowedList}.`,
+        'Return one entry in `items` for every provided `tempId` in the exact same order.',
+        'For each item:',
+        '- `category`: MUST be one of the exact category IDs listed above based strictly on what is shown in the image (ignore any unrelated filename words if the image clearly shows something else).',
+        '- `label`: a concise, natural 2-4 word garment/accessory title (e.g. "Navy Linen Shirt", "White Leather Sneakers", "Silver Chronograph Watch", "Tortoiseshell Specs", "Tan Crossbody Bag").',
+        '- `colorName`: primary 1-2 word color name of the item itself (e.g. "Navy", "White", "Silver", "Cognac").',
+        '- `colorHex`: accurate #RRGGBB hex color of the item itself (ignore background paper/floor).',
+      ].join('\n');
+
+      parts.push({ text: prompt });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: { parts },
+        config: {
+          systemInstruction:
+            'Accurately categorize clothing, footwear, watches, eyewear, bags, and accessories from photos. Return JSON only matching the schema.',
+          responseMimeType: 'application/json',
+          responseSchema: ITEM_CATEGORIZE_SCHEMA,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
+        },
+      });
+
+      const rawText = response.text?.trim();
+      if (!rawText) {
+        res.status(502).json({ error: 'Image categorization returned an empty response.' });
+        return;
+      }
+
+      const parsedJson = JSON.parse(rawText) as {
+        items?: Array<{
+          tempId?: string;
+          category?: string;
+          label?: string;
+          colorName?: string;
+          colorHex?: string;
+        }>;
+      };
+
+      const byTempId = new Map(
+        (parsedJson.items ?? [])
+          .filter((entry) => typeof entry?.tempId === 'string')
+          .map((entry) => [entry.tempId!.trim(), entry]),
+      );
+
+      const results = validItems.map((input, idx) => {
+        const matched = byTempId.get(input.tempId) ?? parsedJson.items?.[idx];
+        const category = normalizeCategoryForGender(matched?.category, gender, 'tops');
+        const label =
+          typeof matched?.label === 'string' && matched.label.trim()
+            ? matched.label.trim().slice(0, 64)
+            : 'Wardrobe Item';
+        const colorName =
+          typeof matched?.colorName === 'string' && matched.colorName.trim()
+            ? matched.colorName.trim().slice(0, 40)
+            : 'Neutral';
+        const rawHex = typeof matched?.colorHex === 'string' ? matched.colorHex.trim() : '';
+        const colorHex = /^#[0-9A-Fa-f]{6}$/.test(rawHex) ? rawHex.toUpperCase() : '#4A4945';
+
+        return {
+          tempId: input.tempId,
+          category,
+          label,
+          colorName,
+          colorHex,
+        };
+      });
+
+      res.json({ items: results });
+    } catch (err) {
+      const classified = classifyGeminiError(err);
+      res.status(classified.status).json({
+        error: classified.message,
+        requiresPaidKey: classified.requiresPaidKey,
+      });
+    }
   });
 
   app.post('/api/style/compose-closet', async (req, res) => {

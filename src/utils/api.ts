@@ -133,6 +133,42 @@ async function readErrorPayload(response: Response, fallback: string) {
   }
 }
 
+export interface CategorizedWardrobeResult {
+  tempId: string;
+  category: WardrobeCategoryId;
+  label: string;
+  colorName: string;
+  colorHex: string;
+}
+
+export async function categorizeWardrobeItemsApi(params: {
+  gender: WardrobeGender;
+  items: Array<{
+    tempId: string;
+    imageDataUrl: string;
+    filename?: string;
+  }>;
+}): Promise<{ items: CategorizedWardrobeResult[] }> {
+  const response = await fetch('/api/style/categorize-items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errPayload = await readErrorPayload(
+      response,
+      'Failed to analyze and categorize uploaded photos.',
+    );
+    throw new ApiRequestError(
+      errPayload.error,
+      response.status,
+      errPayload.requiresPaidKey,
+    );
+  }
+  return (await response.json()) as { items: CategorizedWardrobeResult[] };
+}
+
 export async function composeClosetOutfitsApi(params: {
   gender: WardrobeGender;
   season: string;

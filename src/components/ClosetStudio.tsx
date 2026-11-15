@@ -19,7 +19,10 @@ interface ClosetStudioProps {
   composeError: string | null;
   onSeasonChange: (season: string) => void;
   onAestheticChange: (aesthetic: string) => void;
-  onUploadFilesToCategory: (files: FileList | File[], category: WardrobeCategoryId) => Promise<void>;
+  onUploadFilesToCategory: (
+    files: FileList | File[],
+    category: WardrobeCategoryId,
+  ) => Promise<{ uploadedItems: WardrobeItem[]; notice?: string }>;
   onUpdateItemLabel: (itemId: string, label: string) => void;
   onMoveItemCategory: (itemId: string, category: WardrobeCategoryId) => void;
   onDeleteItem: (itemId: string) => void;
@@ -48,15 +51,17 @@ export function ClosetStudio({
   onGenerateOutfits,
 }: ClosetStudioProps) {
   const categories = getCategoriesForGender(gender);
-  const [activeCategory, setActiveCategory] = useState<WardrobeCategoryId | 'all'>('tops');
+  const [activeCategory, setActiveCategory] = useState<WardrobeCategoryId | 'all'>('all');
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
   const multiInputRef = useRef<HTMLInputElement | null>(null);
 
+  const isAllSelected = activeCategory === 'all';
   const selectedUploadCategory: WardrobeCategoryId =
-    activeCategory === 'all' ? categories[0].id : activeCategory;
+    isAllSelected ? categories[0].id : activeCategory;
 
   const activeCategoryMeta =
     categories.find((c) => c.id === selectedUploadCategory) ?? categories[0];
@@ -67,15 +72,29 @@ export function ClosetStudio({
   }, {});
 
   const visibleItems =
-    activeCategory === 'all'
+    isAllSelected
       ? closetItems
       : closetItems.filter((item) => item.category === activeCategory);
 
   const handleFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
     setIsUploading(true);
+    setUploadNotice(null);
     try {
-      await onUploadFilesToCategory(files, selectedUploadCategory);
+      const result = await onUploadFilesToCategory(files, selectedUploadCategory);
+      if (result.notice) {
+        setUploadNotice(result.notice);
+      }
+      if (result.uploadedItems.length > 0 && activeCategory !== 'all') {
+        const distinctCategories = Array.from(
+          new Set(result.uploadedItems.map((i) => i.category)),
+        );
+        if (distinctCategories.length === 1 && distinctCategories[0] !== activeCategory) {
+          setActiveCategory(distinctCategories[0]);
+        } else if (distinctCategories.length > 1) {
+          setActiveCategory('all');
+        }
+      }
     } finally {
       setIsUploading(false);
     }
@@ -227,10 +246,18 @@ export function ClosetStudio({
               type="button"
               onClick={() => multiInputRef.current?.click()}
               disabled={isUploading}
-              className="min-h-10 px-4 py-2 text-xs font-semibold text-white bg-[#191816] rounded-xl hover:bg-[#312E2A] inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+              className="min-h-10 px-4 py-2 text-xs font-semibold text-white bg-[#191816] rounded-xl hover:bg-[#312E2A] disabled:opacity-60 inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-              Add to {activeCategoryMeta.shortLabel}
+              {isUploading ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+              {isUploading
+                ? 'Analyzing Photos...'
+                : isAllSelected
+                  ? 'Upload Photos'
+                  : `Add ${activeCategoryMeta.shortLabel}`}
             </button>
           </div>
 
@@ -319,10 +346,16 @@ export function ClosetStudio({
               </span>
               <div className="min-w-0">
                 <span className="block text-sm font-semibold text-[#191816]">
-                  Upload {activeCategoryMeta.label}
+                  {isUploading
+                    ? 'Analyzing & Categorizing Photos...'
+                    : isAllSelected
+                      ? 'Upload Clothes & Accessories'
+                      : `Upload ${activeCategoryMeta.label}`}
                 </span>
                 <span className="block text-xs text-[#5E5A54]">
-                  {activeCategoryMeta.placeholder} · PNG, JPEG, or WebP
+                  {isAllSelected
+                    ? 'Photos are analyzed automatically and placed into the right category · PNG, JPEG, or WebP'
+                    : `${activeCategoryMeta.placeholder} · Auto-sorted by image analysis · PNG, JPEG, or WebP`}
                 </span>
               </div>
             </div>
@@ -330,20 +363,37 @@ export function ClosetStudio({
               type="button"
               onClick={() => multiInputRef.current?.click()}
               disabled={isUploading}
-              className="min-h-10 px-4 py-2 text-xs font-medium text-[#191816] bg-white border border-[#E5E0D8] rounded-lg hover:border-[#191816] whitespace-nowrap shrink-0 cursor-pointer"
+              className="min-h-10 px-4 py-2 text-xs font-medium text-[#191816] bg-white border border-[#E5E0D8] rounded-lg hover:border-[#191816] disabled:opacity-60 whitespace-nowrap shrink-0 cursor-pointer"
             >
-              {isUploading ? 'Saving...' : 'Choose Photos'}
+              {isUploading ? 'Analyzing...' : 'Choose Photos'}
             </button>
           </div>
+
+          {uploadNotice && (
+            <div
+              role="status"
+              className="px-3.5 py-2.5 rounded-xl bg-[#F9F8F5] border border-[#E5E0D8] flex items-center justify-between gap-3 text-xs text-[#191816]"
+            >
+              <span className="min-w-0">{uploadNotice}</span>
+              <button
+                type="button"
+                onClick={() => setUploadNotice(null)}
+                className="text-[11px] font-semibold text-[#5E5A54] hover:text-[#191816] shrink-0 cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {visibleItems.length === 0 ? (
             <div className="py-10 px-4 text-center bg-[#F9F8F5] rounded-xl border border-[#EFECE6]">
               <p className="font-display text-xl text-[#191816]">
-                No {activeCategory === 'all' ? 'items' : activeCategoryMeta.label} uploaded yet
+                No {isAllSelected ? 'items' : activeCategoryMeta.label} uploaded yet
               </p>
               <p className="text-xs text-[#5E5A54] mt-1 max-w-sm mx-auto">
-                Add photos of your real {activeCategoryMeta.label.toLowerCase()} above. Everything is
-                saved automatically so you never have to re-upload.
+                {isAllSelected
+                  ? 'Upload photos of your real clothes, shoes, watches, specs, or bags above. Each item is analyzed and sorted into its category automatically.'
+                  : `Add photos above or upload any piece—image analysis automatically places ${activeCategoryMeta.label.toLowerCase()} and everything else into the right category.`}
               </p>
             </div>
           ) : (

@@ -188,6 +188,65 @@ export function getCategoryLabel(
   );
 }
 
+const VALID_CATEGORY_IDS = new Set<WardrobeCategoryId>([
+  'tops',
+  'bottoms',
+  'dresses',
+  'outerwear',
+  'shoes',
+  'bags',
+  'watches',
+  'eyewear',
+  'accessories',
+]);
+
+export function normalizeCategoryForGender(
+  rawCategory: unknown,
+  gender: WardrobeGender,
+  fallback: WardrobeCategoryId = 'tops',
+): WardrobeCategoryId {
+  const allowed = new Set(getCategoriesForGender(gender).map((c) => c.id));
+  const safeFallback: WardrobeCategoryId = allowed.has(fallback) ? fallback : 'tops';
+
+  if (typeof rawCategory !== 'string') return safeFallback;
+  const cleaned = rawCategory.trim().toLowerCase();
+  if (!cleaned) return safeFallback;
+
+  let resolved: WardrobeCategoryId | null = VALID_CATEGORY_IDS.has(
+    cleaned as WardrobeCategoryId,
+  )
+    ? (cleaned as WardrobeCategoryId)
+    : null;
+
+  if (!resolved) {
+    if (/(watch|timepiece|chronograph)/.test(cleaned)) {
+      resolved = 'watches';
+    } else if (/(spec|eyewear|eyeglass|sunglass|aviator|optical|frame)/.test(cleaned)) {
+      resolved = 'eyewear';
+    } else if (/(shoe|sneaker|loafer|boot|heel|sandal|flat|footwear|trainer|oxford)/.test(cleaned)) {
+      resolved = 'shoes';
+    } else if (/(bag|tote|backpack|clutch|purse|handbag|messenger|duffel|satchel)/.test(cleaned)) {
+      resolved = 'bags';
+    } else if (/(dress|gown|jumpsuit|romper|one-piece)/.test(cleaned)) {
+      resolved = 'dresses';
+    } else if (/(jacket|blazer|coat|trench|parka|outerwear|cardigan|overshirt|windbreaker)/.test(cleaned)) {
+      resolved = 'outerwear';
+    } else if (/(bottom|trouser|pant|jean|chino|short|skirt|denim|legging)/.test(cleaned)) {
+      resolved = 'bottoms';
+    } else if (/(belt|hat|cap|scarf|jewel|necklace|earring|bracelet|ring|tie|sock|accessor)/.test(cleaned)) {
+      resolved = 'accessories';
+    } else if (/(top|shirt|tee|t-shirt|polo|blouse|sweater|knit|hoodie|sweatshirt|kurta)/.test(cleaned)) {
+      resolved = 'tops';
+    }
+  }
+
+  if (!resolved) return safeFallback;
+  if (!allowed.has(resolved)) {
+    return resolved === 'dresses' ? 'tops' : safeFallback;
+  }
+  return resolved;
+}
+
 export function cleanFileLabel(filename: string, fallback: string): string {
   const withoutExt = filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
   if (!withoutExt) return fallback;
@@ -316,6 +375,37 @@ function openClosetDb(): Promise<IDBDatabase> {
   });
 }
 
+export function mergeUniqueWardrobeItems(
+  incoming: WardrobeItem[],
+  existing: WardrobeItem[],
+): WardrobeItem[] {
+  const byId = new Map<string, WardrobeItem>();
+  for (const item of existing) {
+    if (!item?.id) continue;
+    byId.set(item.id, item);
+  }
+  for (const item of incoming) {
+    if (!item?.id) continue;
+    const prev = byId.get(item.id);
+    if (prev) {
+      byId.set(item.id, {
+        ...prev,
+        ...item,
+        imageUrl:
+          item.imageUrl && item.imageUrl.length >= (prev.imageUrl?.length ?? 0)
+            ? item.imageUrl
+            : prev.imageUrl || item.imageUrl,
+        syncThumbnailUrl: item.syncThumbnailUrl || prev.syncThumbnailUrl,
+      });
+    } else {
+      byId.set(item.id, item);
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) =>
+    (b.createdAt || '').localeCompare(a.createdAt || ''),
+  );
+}
+
 export async function loadClosetItemsLocal(): Promise<WardrobeItem[]> {
   try {
     const db = await openClosetDb();
@@ -325,8 +415,7 @@ export async function loadClosetItemsLocal(): Promise<WardrobeItem[]> {
       const req = store.getAll();
       req.onsuccess = () => {
         const rows = Array.isArray(req.result) ? (req.result as WardrobeItem[]) : [];
-        rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-        resolve(rows);
+        resolve(mergeUniqueWardrobeItems(rows, []));
       };
       req.onerror = () => reject(req.error ?? new Error('Failed to read closet items'));
     });
@@ -335,7 +424,9 @@ export async function loadClosetItemsLocal(): Promise<WardrobeItem[]> {
       const raw = window.localStorage.getItem(LS_FALLBACK_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as WardrobeItem[]) : [];
+      return Array.isArray(parsed)
+        ? mergeUniqueWardrobeItems(parsed as WardrobeItem[], [])
+        : [];
     } catch {
       return [];
     }

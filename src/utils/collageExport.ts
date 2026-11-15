@@ -221,7 +221,7 @@ export async function renderOutfitCollageDataUrl(
   const footerY = 1480;
   ctx.fillStyle = '#575652';
   ctx.font = '500 22px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText('Atelier Edit  ·  Personal Wardrobe Lookbook', margin, footerY + 46);
+  ctx.fillText('OutfitVault  ·  Personal Wardrobe Lookbook', margin, footerY + 46);
 
   // Swatch bar on bottom right
   const swatchSize = 36;

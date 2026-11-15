@@ -22,10 +22,10 @@ export function AuthGateView({
 
   return (
     <div className="min-h-screen atelier-surface text-[#191816] flex flex-col">
-      <header className="sticky top-0 z-30 bg-[#F4F1EC]/90 backdrop-blur-md border-b border-[#E5E0D8]">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E5E0D8] shadow-[0_1px_8px_-4px_rgba(25,24,22,0.06)]">
         <div className="max-w-[1240px] mx-auto px-4 sm:px-6 h-14 lg:h-16 flex items-center justify-between gap-4">
           <span className="font-display text-xl sm:text-2xl font-semibold tracking-tight text-[#191816] whitespace-nowrap">
-            Atelier Edit
+            OutfitVault
           </span>
           <button
             type="button"

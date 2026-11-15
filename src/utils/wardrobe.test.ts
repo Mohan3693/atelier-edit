@@ -4,6 +4,8 @@ import {
   cleanFileLabel,
   getCategoriesForGender,
   getCategoryLabel,
+  mergeUniqueWardrobeItems,
+  normalizeCategoryForGender,
   resolveOutfitPiecesWithCloset,
 } from './wardrobe';
 import type { WardrobeItem } from '../types/stylist';
@@ -28,6 +30,18 @@ test('getCategoriesForGender returns tailored male, female, and unisex taxonomie
   const unisex = getCategoriesForGender('unisex');
   assert.ok(unisex.some((c) => c.id === 'dresses'));
   assert.equal(getCategoryLabel('eyewear', 'male'), 'Specs & Sunglasses');
+});
+
+test('normalizeCategoryForGender maps synonyms and respects gender category sets', () => {
+  assert.equal(normalizeCategoryForGender('watches', 'male'), 'watches');
+  assert.equal(normalizeCategoryForGender('Sunglasses', 'female'), 'eyewear');
+  assert.equal(normalizeCategoryForGender('White Sneakers', 'male'), 'shoes');
+  assert.equal(normalizeCategoryForGender('Leather Tote Bag', 'female'), 'bags');
+  assert.equal(normalizeCategoryForGender('Denim Jeans', 'male'), 'bottoms');
+  assert.equal(normalizeCategoryForGender('Wool Blazer', 'female'), 'outerwear');
+  assert.equal(normalizeCategoryForGender('dresses', 'female'), 'dresses');
+  assert.equal(normalizeCategoryForGender('dresses', 'male'), 'tops');
+  assert.equal(normalizeCategoryForGender('unknown-item', 'male', 'accessories'), 'accessories');
 });
 
 test('cleanFileLabel formats uploaded garment filenames cleanly', () => {
@@ -89,4 +103,35 @@ test('resolveOutfitPiecesWithCloset hydrates piece category and photo from close
   assert.equal(resolved[0].category, 'tops');
   assert.equal(resolved[1].imageUrl, 'data:image/jpeg;base64,highres2');
   assert.equal(resolved[1].category, 'watches');
+});
+
+test('mergeUniqueWardrobeItems deduplicates identical starter/uploaded IDs and preserves higher-res photos', () => {
+  const fullItem: WardrobeItem = {
+    id: 'starter-1794747743744-0',
+    label: 'Rust Houndstooth Wool Blazer',
+    category: 'outerwear',
+    gender: 'unisex',
+    colorName: 'Curated',
+    colorHex: '#6E3524',
+    imageUrl: 'data:image/jpeg;base64,fullresolutionimagepayload',
+    syncThumbnailUrl: 'data:image/jpeg;base64,thumb',
+    createdAt: '2026-11-15T05:00:00.000Z',
+  };
+  const snapshotItem: WardrobeItem = {
+    ...fullItem,
+    imageUrl: 'data:image/jpeg;base64,thumb',
+  };
+  const secondItem: WardrobeItem = {
+    ...fullItem,
+    id: 'starter-1794747743744-1',
+    label: 'Botanical Jacquard Statement',
+    category: 'tops',
+    createdAt: '2026-11-15T05:00:01.000Z',
+  };
+
+  const merged = mergeUniqueWardrobeItems([fullItem, secondItem], [snapshotItem]);
+  assert.equal(merged.length, 2);
+  const first = merged.find((i) => i.id === 'starter-1794747743744-0');
+  assert.ok(first);
+  assert.equal(first.imageUrl, 'data:image/jpeg;base64,fullresolutionimagepayload');
 });

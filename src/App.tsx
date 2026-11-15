@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Header, type AppPageId } from './components/Header';
 import { AuthGateView } from './components/AuthGateView';
 import { GenderOnboardingView } from './components/GenderOnboardingView';
@@ -38,6 +38,7 @@ import type {
   WardrobeItem,
 } from './types/stylist';
 import {
+  categorizeWardrobeItemsApi,
   composeClosetOutfitsApi,
   deleteSavedLookSqlApi,
   deleteUserAccountSqlApi,
@@ -45,6 +46,7 @@ import {
   recordAnalysisSqlApi,
   syncUserSqlApi,
   upsertSavedLookSqlApi,
+  type CategorizedWardrobeResult,
 } from './utils/api';
 import {
   getOutfitPaletteCategory,
@@ -58,6 +60,8 @@ import {
   deleteClosetItemLocal,
   getCategoryLabel,
   loadClosetItemsLocal,
+  mergeUniqueWardrobeItems,
+  normalizeCategoryForGender,
   prepareWardrobeImagePair,
   prepareWardrobeImagePairFromUrl,
   resolveOutfitPiecesWithCloset,
@@ -115,11 +119,12 @@ export default function App() {
     anchorItemName: string;
   } | null>(null);
   const [activePage, setActivePage] = useState<AppPageId>('closet');
+  const isLoadingStarterRef = useRef(false);
 
   useEffect(() => {
     void loadClosetItemsLocal().then((localItems) => {
       if (localItems.length > 0) {
-        setClosetItems(localItems);
+        setClosetItems((prev) => mergeUniqueWardrobeItems(localItems, prev));
       }
     });
   }, []);
@@ -377,7 +382,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `atelier-edit-wardrobe-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `outfitvault-wardrobe-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -428,32 +433,29 @@ export default function App() {
 
   const handleUploadFilesToCategory = async (
     files: FileList | File[],
-    category: WardrobeCategoryId,
-  ) => {
+    fallbackCategory: WardrobeCategoryId,
+  ): Promise<{
+    uploadedItems: WardrobeItem[];
+    notice?: string;
+  }> => {
     setComposeError(null);
     const fileArray = Array.from(files);
-    const created: WardrobeItem[] = [];
+
+    const prepared: Array<{
+      tempId: string;
+      file: File;
+      pair: { imageUrl: string; syncThumbnailUrl: string; colorHex: string };
+    }> = [];
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
       try {
         const pair = await prepareWardrobeImagePair(file);
-        const item: WardrobeItem = {
-          id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${i}`,
-          gender,
-          category,
-          label: cleanFileLabel(file.name, getCategoryLabel(category, gender)),
-          imageUrl: pair.imageUrl,
-          syncThumbnailUrl: pair.syncThumbnailUrl,
-          colorName: 'Uploaded',
-          colorHex: pair.colorHex,
-          createdAt: new Date().toISOString(),
-        };
-        created.push(item);
-        await saveClosetItemLocal(item);
-        if (user) {
-          void upsertWardrobeItemInFirestore(user.uid, item).catch(() => {});
-        }
+        prepared.push({
+          tempId: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${i}`,
+          file,
+          pair,
+        });
       } catch (err) {
         setComposeError(
           err instanceof Error ? err.message : 'Unable to process one of the selected photos.',
@@ -461,9 +463,97 @@ export default function App() {
       }
     }
 
-    if (created.length > 0) {
-      setClosetItems((prev) => [...created, ...prev]);
+    if (prepared.length === 0) {
+      return { uploadedItems: [] };
     }
+
+    const analyzedByTempId = new Map<string, CategorizedWardrobeResult>();
+    let analyzeErrorMessage: string | null = null;
+
+    // Analyze uploaded photos in small fast batches to auto-detect category, label, and color
+    for (let start = 0; start < prepared.length; start += 6) {
+      const batch = prepared.slice(start, start + 6);
+      try {
+        const res = await categorizeWardrobeItemsApi({
+          gender,
+          items: batch.map((entry) => ({
+            tempId: entry.tempId,
+            imageDataUrl: entry.pair.syncThumbnailUrl || entry.pair.imageUrl,
+            filename: entry.file.name,
+          })),
+        });
+        for (const classified of res.items) {
+          analyzedByTempId.set(classified.tempId, classified);
+        }
+      } catch (err) {
+        analyzeErrorMessage =
+          err instanceof Error
+            ? err.message
+            : 'Could not auto-categorize photos via image analysis.';
+      }
+    }
+
+    if (analyzeErrorMessage) {
+      setComposeError(
+        `${analyzeErrorMessage} Placed uploaded item(s) into ${getCategoryLabel(
+          fallbackCategory,
+          gender,
+        )} so you can still use or adjust them.`,
+      );
+    }
+
+    const created: WardrobeItem[] = [];
+    for (const entry of prepared) {
+      const analyzed = analyzedByTempId.get(entry.tempId);
+      const resolvedCategory = analyzed
+        ? normalizeCategoryForGender(analyzed.category, gender, fallbackCategory)
+        : fallbackCategory;
+      const resolvedLabel =
+        analyzed?.label?.trim() ||
+        cleanFileLabel(entry.file.name, getCategoryLabel(resolvedCategory, gender));
+      const resolvedColorName = analyzed?.colorName?.trim() || 'Uploaded';
+      const resolvedColorHex = analyzed?.colorHex?.trim() || entry.pair.colorHex;
+
+      const item: WardrobeItem = {
+        id: entry.tempId,
+        gender,
+        category: resolvedCategory,
+        label: resolvedLabel.slice(0, 120),
+        imageUrl: entry.pair.imageUrl,
+        syncThumbnailUrl: entry.pair.syncThumbnailUrl,
+        colorName: resolvedColorName.slice(0, 60),
+        colorHex: resolvedColorHex.slice(0, 16),
+        createdAt: new Date().toISOString(),
+      };
+      created.push(item);
+      await saveClosetItemLocal(item);
+      if (user) {
+        void upsertWardrobeItemInFirestore(user.uid, item).catch(() => {});
+      }
+    }
+
+    if (created.length > 0) {
+      setClosetItems((prev) => mergeUniqueWardrobeItems(created, prev));
+    }
+
+    let notice: string | undefined;
+    if (created.length === 1 && analyzedByTempId.size > 0) {
+      notice = `Analyzed "${created[0].label}" and placed in ${getCategoryLabel(
+        created[0].category,
+        gender,
+      )}.`;
+    } else if (created.length > 1 && analyzedByTempId.size > 0) {
+      const tally = new Map<WardrobeCategoryId, number>();
+      for (const item of created) {
+        tally.set(item.category, (tally.get(item.category) ?? 0) + 1);
+      }
+      const breakdown = Array.from(tally.entries())
+        .map(([cat, count]) => `${count} in ${getCategoryLabel(cat, gender)}`)
+        .join(', ');
+      notice = `Analyzed & categorized ${created.length} items: ${breakdown}.`;
+    }
+
+    return { uploadedItems: created, notice };
   };
 
   const handleUpdateItemLabel = (itemId: string, label: string) => {
@@ -510,6 +600,8 @@ export default function App() {
   };
 
   const handleLoadStarterCloset = async () => {
+    if (isLoadingStarterRef.current) return;
+    isLoadingStarterRef.current = true;
     setComposeError(null);
     const starterSpecs: Array<{
       label: string;
@@ -547,34 +639,39 @@ export default function App() {
             },
           ];
 
+    const batchStamp = Date.now();
     const added: WardrobeItem[] = [];
-    for (let i = 0; i < starterSpecs.length; i++) {
-      const spec = starterSpecs[i];
-      try {
-        const pair = await prepareWardrobeImagePairFromUrl(spec.imageUrl);
-        const item: WardrobeItem = {
-          id: `starter-${Date.now()}-${i}`,
-          gender: 'unisex',
-          category: spec.category,
-          label: spec.label,
-          imageUrl: pair.imageUrl,
-          syncThumbnailUrl: pair.syncThumbnailUrl,
-          colorName: 'Curated',
-          colorHex: pair.colorHex,
-          createdAt: new Date().toISOString(),
-        };
-        added.push(item);
-        await saveClosetItemLocal(item);
-        if (user) {
-          void upsertWardrobeItemInFirestore(user.uid, item).catch(() => {});
+    try {
+      for (let i = 0; i < starterSpecs.length; i++) {
+        const spec = starterSpecs[i];
+        try {
+          const pair = await prepareWardrobeImagePairFromUrl(spec.imageUrl);
+          const item: WardrobeItem = {
+            id: `starter-${batchStamp}-${Math.random().toString(36).slice(2, 7)}-${i}`,
+            gender: 'unisex',
+            category: spec.category,
+            label: spec.label,
+            imageUrl: pair.imageUrl,
+            syncThumbnailUrl: pair.syncThumbnailUrl,
+            colorName: 'Curated',
+            colorHex: pair.colorHex,
+            createdAt: new Date(batchStamp + i).toISOString(),
+          };
+          added.push(item);
+          await saveClosetItemLocal(item);
+          if (user) {
+            void upsertWardrobeItemInFirestore(user.uid, item).catch(() => {});
+          }
+        } catch {
+          // Ignore single sample asset error
         }
-      } catch {
-        // Ignore single sample asset error
       }
-    }
 
-    if (added.length > 0) {
-      setClosetItems((prev) => [...added, ...prev]);
+      if (added.length > 0) {
+        setClosetItems((prev) => mergeUniqueWardrobeItems(added, prev));
+      }
+    } finally {
+      isLoadingStarterRef.current = false;
     }
   };
 
@@ -1011,10 +1108,10 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-[#E5E0D8] bg-white/85 backdrop-blur-sm">
+      <footer className="border-t border-[#E5E0D8] bg-white/95 backdrop-blur-sm">
         <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-center sm:text-left text-xs text-[#5E5A54]">
           <span className="font-display text-base font-semibold text-[#191816]">
-            Atelier Edit
+            OutfitVault
           </span>
           <span>
             Personal Wardrobe Vault &middot; Real-Photo Outfit Composer &amp; Lookbook Studio

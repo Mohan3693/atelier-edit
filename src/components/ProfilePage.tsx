@@ -239,7 +239,7 @@ export function ProfilePage({
               Account &amp; Permanent Deletion
             </h2>
             <p className="text-xs sm:text-sm text-[#5E5A54] mt-1 leading-relaxed">
-              Sign out of this device or permanently delete your Atelier Edit account, uploaded
+              Sign out of this device or permanently delete your OutfitVault account, uploaded
               wardrobe items, saved looks, styling history, and local browser data.
             </p>
           </div>

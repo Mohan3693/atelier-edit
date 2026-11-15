@@ -211,9 +211,9 @@ import { buildPdfLookbookFilename, buildPdfOutfitModels, hexToRgb } from './pdfE
 test('buildPdfLookbookFilename sanitizes garment names and hexToRgb converts hex strings', () => {
   assert.equal(
     buildPdfLookbookFilename('Botanical Jacquard Midi Skirt!'),
-    'atelier-edit-botanical-jacquard-midi-skirt.pdf',
+    'outfitvault-botanical-jacquard-midi-skirt.pdf',
   );
-  assert.equal(buildPdfLookbookFilename('   '), 'atelier-edit-lookbook.pdf');
+  assert.equal(buildPdfLookbookFilename('   '), 'outfitvault-lookbook.pdf');
   assert.deepEqual(hexToRgb('#1F4DA1'), { r: 31, g: 77, b: 161 });
 });
 

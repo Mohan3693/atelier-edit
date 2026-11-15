@@ -7,7 +7,7 @@ export function buildPdfLookbookFilename(itemName: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
-  return `atelier-edit-${slug || 'lookbook'}.pdf`;
+  return `outfitvault-${slug || 'lookbook'}.pdf`;
 }
 
 export function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -115,7 +115,7 @@ export async function exportOutfitsToPdf(params: {
   doc.setTextColor(87, 86, 82);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text('ATELIER EDIT · VIRTUAL STYLIST LOOKBOOK', margin, 20);
+  doc.text('OUTFITVAULT · PERSONAL WARDROBE LOOKBOOK', margin, 20);
 
   doc.setTextColor(20, 20, 19);
   doc.setFont('times', 'bold');

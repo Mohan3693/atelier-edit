@@ -6,7 +6,6 @@ import { ClosetStudio } from './components/ClosetStudio';
 import { AnalysisStrip } from './components/AnalysisStrip';
 import { OutfitGrid } from './components/OutfitGrid';
 import { MixMatchStudio } from './components/MixMatchStudio';
-import { VoiceStylistSection } from './components/VoiceStylistSection';
 import {
   SavedLooksSection,
   type HistoryAnalysisEntry,
@@ -26,7 +25,6 @@ import {
   subscribeSavedLooksInFirestore,
   subscribeWardrobeItemsInFirestore,
   syncUserProfileToFirestore,
-  updateUserDisplayNameInFirestore,
   upsertSavedLookInFirestore,
   upsertWardrobeItemInFirestore,
 } from './lib/firestoreLooks';
@@ -45,11 +43,9 @@ import {
   deleteUserAccountSqlApi,
   fetchWardrobeHistorySqlApi,
   recordAnalysisSqlApi,
-  recordVoiceSessionSqlApi,
   syncUserSqlApi,
   upsertSavedLookSqlApi,
 } from './utils/api';
-import type { StylistVoiceName } from './utils/liveAudio';
 import {
   getOutfitPaletteCategory,
   parseSavedLooksJson,
@@ -84,7 +80,6 @@ export default function App() {
     clearAuthError,
     signInWithGoogle,
     signOutUser,
-    updateDisplayName,
     deleteAccount,
     getIdToken,
   } = useAuth();
@@ -100,7 +95,6 @@ export default function App() {
   const [genderConfirmed, setGenderConfirmed] = useState<boolean>(false);
   const [season, setSeason] = useState<string>('All-Season');
   const [aesthetic, setAesthetic] = useState<string>('Modern Editorial');
-  const [preferredVoice, setPreferredVoice] = useState<StylistVoiceName>('Zephyr');
 
   const [closetItems, setClosetItems] = useState<WardrobeItem[]>([]);
   const [anchorItemId, setAnchorItemId] = useState<string | null>(null);
@@ -185,7 +179,6 @@ export default function App() {
           }
           setSeason(prefs.preferredSeason);
           setAesthetic(prefs.preferredAesthetic);
-          setPreferredVoice(prefs.preferredVoice);
         }
 
         unsubscribeCloset = subscribeWardrobeItemsInFirestore(user.uid, (remoteItems) => {
@@ -276,7 +269,6 @@ export default function App() {
     nextGender: WardrobeGender,
     nextSeason: string,
     nextAesthetic: string,
-    nextVoice: StylistVoiceName,
   ) => {
     if (!user) return;
     try {
@@ -287,7 +279,7 @@ export default function App() {
             ? nextSeason
             : 'All-Season',
         preferredAesthetic: nextAesthetic,
-        preferredVoice: nextVoice,
+        preferredVoice: 'Zephyr',
       });
     } catch {
       // Non-blocking preference sync
@@ -311,7 +303,7 @@ export default function App() {
         // Ignore session storage errors
       }
     }
-    void persistUserPrefs(chosenGender, season, aesthetic, preferredVoice);
+    void persistUserPrefs(chosenGender, season, aesthetic);
   };
 
   const handleSignOutClick = async () => {
@@ -329,12 +321,6 @@ export default function App() {
     await signOutUser();
   };
 
-  const handleUpdateDisplayName = async (nextName: string) => {
-    if (!user) return;
-    await updateDisplayName(nextName);
-    await updateUserDisplayNameInFirestore(user, nextName);
-  };
-
   const handleExportProfileData = () => {
     if (!user) return;
     const exportPayload = {
@@ -350,7 +336,6 @@ export default function App() {
         gender,
         season,
         aesthetic,
-        preferredVoice,
       },
       closetItems: closetItems.map(({ id, gender: itemGender, category, label, colorName, colorHex, createdAt }) => ({
         id,
@@ -610,24 +595,29 @@ export default function App() {
         imageDataUrl: item.syncThumbnailUrl || item.imageUrl,
       }));
 
+      const previousCombinations = outfits.map(
+        (existing) =>
+          `${existing.title} (${existing.pieces.map((p) => `${p.wardrobeItemId ?? ''}:${p.name}`).join(', ')})`,
+      );
+
       const result = await composeClosetOutfitsApi({
         gender,
         season,
         aesthetic,
         anchorItemId: anchorItemId ?? undefined,
+        variationSeed: Date.now(),
+        previousCombinations: previousCombinations.length > 0 ? previousCombinations : undefined,
         items: payloadItems,
       });
 
       const batchStamp = Date.now();
-      const hydratedOutfits: OutfitOption[] = result.outfits.slice(0, 3).map((item, idx) => {
+      const hydratedOutfits: OutfitOption[] = result.outfits.slice(0, 2).map((item, idx) => {
         const occasion: OccasionType =
-          item.occasion === 'Business' || item.occasion === 'Night Out'
+          item.occasion === 'Business' || item.occasion === 'Night Out' || item.occasion === 'Casual'
             ? item.occasion
             : idx === 1
-              ? 'Business'
-              : idx === 2
-                ? 'Night Out'
-                : 'Casual';
+              ? 'Night Out'
+              : 'Casual';
         const resolvedPieces = resolveOutfitPiecesWithCloset(item.pieces, closetItems);
         return {
           ...item,
@@ -686,7 +676,13 @@ export default function App() {
         });
       }
 
-      navigateToPage('outfits');
+      setActivePage('closet');
+      window.setTimeout(() => {
+        document.getElementById('outfit-looks')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 90);
     } catch (err) {
       setComposeError(
         err instanceof Error
@@ -846,26 +842,18 @@ export default function App() {
     if (!entry.itemAnalysis || !entry.outfits) return;
     setAnalysis(entry.itemAnalysis);
     setOutfits(
-      entry.outfits.map((o) => ({
+      entry.outfits.slice(0, 2).map((o) => ({
         ...o,
         pieces: resolveOutfitPiecesWithCloset(o.pieces, closetItems),
       })),
     );
-    navigateToPage('outfits');
-  };
-
-  const handleVoiceSessionEnded = (summary: {
-    anchorItemName: string;
-    voiceName: StylistVoiceName;
-    transcriptSummary: string;
-    durationSeconds: number;
-  }) => {
-    if (!user) return;
-    void getIdToken().then((token) => {
-      if (token) {
-        void recordVoiceSessionSqlApi(token, summary).catch(() => {});
-      }
-    });
+    setActivePage('closet');
+    window.setTimeout(() => {
+      document.getElementById('outfit-looks')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 90);
   };
 
   if (!user) {
@@ -894,7 +882,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F8F7] text-[#141413] flex flex-col">
+    <div className="min-h-screen atelier-surface text-[#191816] flex flex-col">
       <Header
         savedCount={savedLooks.length}
         closetCount={closetItems.length}
@@ -914,7 +902,7 @@ export default function App() {
       {authError && (
         <div
           role="alert"
-          className="bg-[#FAF3F4] border-b border-[#E7C6CC] px-4 sm:px-6 py-2.5 text-xs text-[#9E1B32] flex items-center justify-between gap-4 max-w-[1240px] w-full mx-auto"
+          className="bg-[#FAF2F4] border-b border-[#E7C8D0] px-4 sm:px-6 py-2.5 text-xs text-[#8E1B35] flex items-center justify-between gap-4 max-w-[1240px] w-full mx-auto"
         >
           <span>{authError}</span>
           <button
@@ -929,41 +917,43 @@ export default function App() {
 
       <main className="flex-1">
         {activePage === 'closet' && (
-          <ClosetStudio
-            gender={gender}
-            season={season}
-            aesthetic={aesthetic}
-            closetItems={closetItems}
-            anchorItemId={anchorItemId}
-            isComposing={isComposing}
-            composeError={composeError}
-            onSeasonChange={(nextSeason) => {
-              setSeason(nextSeason);
-              void persistUserPrefs(gender, nextSeason, aesthetic, preferredVoice);
-            }}
-            onAestheticChange={(nextAesthetic) => {
-              setAesthetic(nextAesthetic);
-              void persistUserPrefs(gender, season, nextAesthetic, preferredVoice);
-            }}
-            onUploadFilesToCategory={handleUploadFilesToCategory}
-            onUpdateItemLabel={handleUpdateItemLabel}
-            onMoveItemCategory={handleMoveItemCategory}
-            onDeleteItem={handleDeleteItem}
-            onToggleAnchorItem={(id) =>
-              setAnchorItemId((curr) => (curr === id ? null : id))
-            }
-            onLoadStarterCloset={handleLoadStarterCloset}
-            onGenerateOutfits={() => void handleGenerateOutfitsFromCloset()}
-          />
-        )}
+          <>
+            <ClosetStudio
+              gender={gender}
+              season={season}
+              aesthetic={aesthetic}
+              closetItems={closetItems}
+              anchorItemId={anchorItemId}
+              hasOutfits={outfits.length > 0}
+              isComposing={isComposing}
+              composeError={composeError}
+              onSeasonChange={(nextSeason) => {
+                setSeason(nextSeason);
+                void persistUserPrefs(gender, nextSeason, aesthetic);
+              }}
+              onAestheticChange={(nextAesthetic) => {
+                setAesthetic(nextAesthetic);
+                void persistUserPrefs(gender, season, nextAesthetic);
+              }}
+              onUploadFilesToCategory={handleUploadFilesToCategory}
+              onUpdateItemLabel={handleUpdateItemLabel}
+              onMoveItemCategory={handleMoveItemCategory}
+              onDeleteItem={handleDeleteItem}
+              onToggleAnchorItem={(id) =>
+                setAnchorItemId((curr) => (curr === id ? null : id))
+              }
+              onLoadStarterCloset={handleLoadStarterCloset}
+              onGenerateOutfits={() => void handleGenerateOutfitsFromCloset()}
+            />
 
-        {activePage === 'outfits' &&
-          (outfits.length > 0 && analysis ? (
-            <>
+            {analysis && (
               <AnalysisStrip
                 analysis={analysis}
                 anchorImageUrl={getRepresentativeAnchorImage()}
               />
+            )}
+
+            {outfits.length > 0 && analysis && (
               <OutfitGrid
                 outfits={outfits}
                 closetItems={closetItems}
@@ -980,52 +970,15 @@ export default function App() {
                 onRefreshAllOutfits={() => void handleGenerateOutfitsFromCloset()}
                 onExportAllToPdf={handleExportAllToPdf}
               />
-            </>
-          ) : (
-            <section
-              aria-label="Generated outfits empty state"
-              className="max-w-[1240px] mx-auto px-4 sm:px-6 py-12 sm:py-16"
-            >
-              <div className="bg-white border border-[#E4E4E7] rounded-2xl p-8 sm:p-12 text-center space-y-4 max-w-xl mx-auto">
-                <p className="text-xs font-medium text-[#575652]">3 Styled Outfits</p>
-                <h1 className="font-display text-3xl font-semibold text-[#141413] tracking-tight">
-                  No Outfits Generated Yet
-                </h1>
-                <p className="text-sm text-[#575652] leading-relaxed">
-                  Upload at least 2 photos from your wardrobe in My Closet and click Generate 3
-                  Outfits to view Casual, Business, and Night Out flat-lays here.
-                </p>
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => navigateToPage('closet')}
-                    className="min-h-11 px-6 py-2.5 text-xs font-semibold text-white bg-[#141413] rounded-xl hover:bg-[#2C2C2A] transition-colors cursor-pointer"
-                  >
-                    Go to My Closet
-                  </button>
-                </div>
-              </div>
-            </section>
-          ))}
+            )}
+          </>
+        )}
 
         {activePage === 'mix' && (
           <MixMatchStudio
             gender={gender}
             closetItems={closetItems}
             onSaveCustomLook={handleSaveCustomLook}
-          />
-        )}
-
-        {activePage === 'voice' && (
-          <VoiceStylistSection
-            analysis={analysis}
-            outfits={outfits}
-            preferredVoice={preferredVoice}
-            onVoiceChange={(nextVoice) => {
-              setPreferredVoice(nextVoice);
-              void persistUserPrefs(gender, season, aesthetic, nextVoice);
-            }}
-            onVoiceSessionEnded={handleVoiceSessionEnded}
           />
         )}
 
@@ -1046,37 +999,9 @@ export default function App() {
 
         {activePage === 'profile' && (
           <ProfilePage
-            user={user}
-            gender={gender}
-            season={season}
-            aesthetic={aesthetic}
-            preferredVoice={preferredVoice}
             closetCount={closetItems.length}
             savedCount={savedLooks.length}
             analysisCount={recentAnalyses.length}
-            onUpdateDisplayName={handleUpdateDisplayName}
-            onGenderChange={(nextGender) => {
-              setGender(nextGender);
-              setSavedServerGender(nextGender);
-              try {
-                window.sessionStorage.setItem(sessionGenderKey(user.uid), nextGender);
-              } catch {
-                // Ignore session storage errors
-              }
-              void persistUserPrefs(nextGender, season, aesthetic, preferredVoice);
-            }}
-            onSeasonChange={(nextSeason) => {
-              setSeason(nextSeason);
-              void persistUserPrefs(gender, nextSeason, aesthetic, preferredVoice);
-            }}
-            onAestheticChange={(nextAesthetic) => {
-              setAesthetic(nextAesthetic);
-              void persistUserPrefs(gender, season, nextAesthetic, preferredVoice);
-            }}
-            onVoiceChange={(nextVoice) => {
-              setPreferredVoice(nextVoice);
-              void persistUserPrefs(gender, season, aesthetic, nextVoice);
-            }}
             onNavigatePage={navigateToPage}
             onExportData={handleExportProfileData}
             onClearCloset={handleClearAllCloset}
@@ -1086,9 +1011,9 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-[#E4E4E7] bg-white">
-        <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-center sm:text-left text-xs text-[#575652]">
-          <span className="font-display text-base font-semibold text-[#141413]">
+      <footer className="border-t border-[#E5E0D8] bg-white/85 backdrop-blur-sm">
+        <div className="max-w-[1240px] mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-center sm:text-left text-xs text-[#5E5A54]">
+          <span className="font-display text-base font-semibold text-[#191816]">
             Atelier Edit
           </span>
           <span>

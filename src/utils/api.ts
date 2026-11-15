@@ -138,6 +138,8 @@ export async function composeClosetOutfitsApi(params: {
   season: string;
   aesthetic: string;
   anchorItemId?: string;
+  variationSeed?: number;
+  previousCombinations?: string[];
   items: Array<{
     id: string;
     category: WardrobeCategoryId;
@@ -266,14 +268,6 @@ export interface SqlWardrobeHistoryResponse {
     paletteJson: ItemAnalysis['palette'];
     createdAt: string;
   }>;
-  voiceSessions: Array<{
-    id: number;
-    anchorItemName: string;
-    voiceName: string;
-    transcriptSummary: string | null;
-    durationSeconds: number;
-    createdAt: string;
-  }>;
 }
 
 export async function syncUserSqlApi(idToken: string): Promise<void> {
@@ -357,28 +351,6 @@ export async function deleteSavedLookSqlApi(
   );
   if (!response.ok) {
     throw new Error('Unable to delete saved outfit.');
-  }
-}
-
-export async function recordVoiceSessionSqlApi(
-  idToken: string,
-  payload: {
-    anchorItemName: string;
-    voiceName: string;
-    transcriptSummary: string;
-    durationSeconds: number;
-  },
-): Promise<void> {
-  const response = await fetch('/api/wardrobe/voice-sessions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${idToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error('Unable to save voice session log.');
   }
 }
 

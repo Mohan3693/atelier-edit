@@ -44,12 +44,12 @@ export function SavedLooksSection({
       <div>
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
           <div>
-            <p className="text-xs font-medium text-[#575652]">Personal Lookbook</p>
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight mt-1">
+            <p className="text-xs font-medium text-[#5E5A54]">Personal Lookbook</p>
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-[#191816] tracking-tight mt-1">
               Saved Outfits
             </h2>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-[#575652] tabular-nums">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-[#5E5A54] tabular-nums">
             <span>
               {savedLooks.length} {savedLooks.length === 1 ? 'saved look' : 'saved looks'}
               {isSignedIn ? ' synced to your account' : ' in this browser'}
@@ -58,7 +58,7 @@ export function SavedLooksSection({
               <button
                 type="button"
                 onClick={onSignInPrompt}
-                className="min-h-10 sm:min-h-0 px-2 -mx-2 text-xs font-semibold text-[#9E1B32] hover:underline cursor-pointer inline-flex items-center"
+                className="min-h-10 sm:min-h-0 px-2 -mx-2 text-xs font-semibold text-[#8E1B35] hover:underline cursor-pointer inline-flex items-center"
               >
                 Sign in with Google to sync
               </button>
@@ -67,11 +67,11 @@ export function SavedLooksSection({
         </div>
 
         {savedLooks.length === 0 ? (
-          <div className="bg-white border border-[#E4E4E7] rounded-2xl p-6 sm:p-10 text-center">
-            <p className="font-display text-2xl text-[#141413]">No Saved Looks Yet</p>
-            <p className="text-sm text-[#575652] mt-1.5 max-w-md mx-auto">
-              Tap &ldquo;Save Look&rdquo; on any Casual, Business, or Night Out outfit above to
-              keep your favorite wardrobe pairings here.
+          <div className="bg-white border border-[#E5E0D8] shadow-[0_2px_14px_-6px_rgba(25,24,22,0.08)] rounded-2xl p-6 sm:p-10 text-center">
+            <p className="font-display text-2xl text-[#191816]">No Saved Looks Yet</p>
+            <p className="text-sm text-[#5E5A54] mt-1.5 max-w-md mx-auto">
+              Tap &ldquo;Save Look&rdquo; on any generated outfit in My Closet to keep your
+              favorite wardrobe pairings here.
             </p>
           </div>
         ) : (
@@ -79,9 +79,9 @@ export function SavedLooksSection({
             {savedLooks.map((entry) => (
               <article
                 key={entry.id}
-                className="bg-white border border-[#E4E4E7] rounded-2xl overflow-hidden flex flex-col"
+                className="bg-white border border-[#E5E0D8] shadow-[0_2px_14px_-6px_rgba(25,24,22,0.08)] rounded-2xl overflow-hidden flex flex-col"
               >
-                <div className="aspect-[4/3] bg-[#F5F4F0] border-b border-[#EFEFEF] overflow-hidden">
+                <div className="aspect-[4/3] bg-[#F6F3EE] border-b border-[#EFECE6] overflow-hidden">
                   <OutfitCollageBoard
                     outfit={entry.outfit}
                     closetItems={closetItems}
@@ -93,28 +93,28 @@ export function SavedLooksSection({
 
                 <div className="p-5 flex-1 flex flex-col justify-between gap-4">
                   <div>
-                    <p className="text-xs text-[#575652]">
-                      <span className="font-semibold text-[#9E1B32]">
+                    <p className="text-xs text-[#5E5A54]">
+                      <span className="font-semibold text-[#8E1B35]">
                         {entry.outfit.occasion}
                       </span>
                       <span aria-hidden="true"> · </span>
                       <span>{entry.anchorItemName}</span>
                     </p>
-                    <h3 className="font-display text-xl font-semibold text-[#141413] mt-1">
+                    <h3 className="font-display text-xl font-semibold text-[#191816] mt-1">
                       {entry.outfit.title}
                     </h3>
-                    <p className="text-xs text-[#575652] mt-1 line-clamp-2">
+                    <p className="text-xs text-[#5E5A54] mt-1 line-clamp-2">
                       {entry.outfit.moodSummary}
                     </p>
                   </div>
 
-                  <div className="pt-2 border-t border-[#EFEFEF] flex items-center justify-between gap-2">
+                  <div className="pt-2 border-t border-[#EFECE6] flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() =>
                         onInspectSavedLook(entry.outfit, entry.anchorItemName)
                       }
-                      className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-8 px-2 -mx-2 text-xs font-medium text-[#141413] hover:underline cursor-pointer"
+                      className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-8 px-2 -mx-2 text-xs font-medium text-[#191816] hover:underline cursor-pointer"
                     >
                       <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
                       Inspect Look
@@ -123,7 +123,7 @@ export function SavedLooksSection({
                       type="button"
                       onClick={() => onRemoveSavedLook(entry.id)}
                       aria-label={`Remove saved look ${entry.outfit.title}`}
-                      className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-2 -mx-2 text-xs font-medium text-[#575652] hover:text-[#9E1B32] cursor-pointer"
+                      className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-2 -mx-2 text-xs font-medium text-[#5E5A54] hover:text-[#8E1B35] cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                       Remove
@@ -137,11 +137,11 @@ export function SavedLooksSection({
       </div>
 
       {isSignedIn && recentAnalyses.length > 0 && (
-        <div className="pt-6 border-t border-[#E4E4E7]">
+        <div className="pt-6 border-t border-[#E5E0D8]">
           <div className="flex items-end justify-between gap-4 mb-4">
             <div>
-              <p className="text-xs font-medium text-[#575652]">Account Wardrobe Archive</p>
-              <h3 className="font-display text-2xl font-semibold text-[#141413]">
+              <p className="text-xs font-medium text-[#5E5A54]">Account Wardrobe Archive</p>
+              <h3 className="font-display text-2xl font-semibold text-[#191816]">
                 Recent Closet Sessions
               </h3>
             </div>
@@ -151,24 +151,24 @@ export function SavedLooksSection({
             {recentAnalyses.slice(0, 6).map((item) => (
               <div
                 key={item.id}
-                className="bg-white border border-[#E4E4E7] rounded-xl p-4 flex flex-col justify-between gap-3"
+                className="bg-white border border-[#E5E0D8] shadow-[0_2px_14px_-6px_rgba(25,24,22,0.08)] rounded-xl p-4 flex flex-col justify-between gap-3"
               >
                 <div>
-                  <p className="text-xs text-[#575652]">
+                  <p className="text-xs text-[#5E5A54]">
                     {item.category}
                     <span aria-hidden="true"> · </span>
                     {item.season}
                   </p>
-                  <p className="font-display text-lg font-semibold text-[#141413] mt-0.5">
+                  <p className="font-display text-lg font-semibold text-[#191816] mt-0.5">
                     {item.itemName}
                   </p>
-                  <p className="text-xs text-[#575652] mt-1">{item.stylePersonality}</p>
+                  <p className="text-xs text-[#5E5A54] mt-1">{item.stylePersonality}</p>
                 </div>
                 {item.itemAnalysis && item.outfits && item.outfits.length > 0 && (
                   <button
                     type="button"
                     onClick={() => onRestoreAnalysis(item)}
-                    className="inline-flex items-center gap-1.5 min-h-10 sm:min-h-0 px-2 -mx-2 text-xs font-semibold text-[#9E1B32] hover:underline cursor-pointer self-start"
+                    className="inline-flex items-center gap-1.5 min-h-10 sm:min-h-0 px-2 -mx-2 text-xs font-semibold text-[#8E1B35] hover:underline cursor-pointer self-start"
                   >
                     <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                     Load Styled Looks

@@ -3,9 +3,7 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
   deleteSavedOutfitSql,
   listSavedOutfitsSql,
-  listVoiceSessionsSql,
   listWardrobeAnalysesSql,
-  recordVoiceSessionSql,
   recordWardrobeAnalysisSql,
   upsertSavedOutfitSql,
 } from '../db/wardrobe.ts';
@@ -20,22 +18,6 @@ export function getAiClient(): GoogleGenAI | null {
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-}
-
-export function getLiveAiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
-    return null;
-  }
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      apiVersion: 'v1beta',
       headers: {
         'User-Agent': 'aistudio-build',
       },
@@ -310,13 +292,29 @@ export function createApiApp(): express.Express {
       validItems.some((item) => item.id === req.body.anchorItemId)
         ? req.body.anchorItemId
         : null;
+    const previousCombinations = Array.isArray(req.body?.previousCombinations)
+      ? req.body.previousCombinations
+          .filter((entry: unknown): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+          .map((entry: string) => entry.trim().slice(0, 240))
+          .slice(0, 6)
+      : [];
+    const isFreshReroll = Boolean(req.body?.variationSeed) || previousCombinations.length > 0;
+
+    // Shuffle wardrobe order on re-rolls so Gemini explores fresh pairings across the closet
+    const orderedItems = [...validItems];
+    if (isFreshReroll && orderedItems.length > 2) {
+      for (let i = orderedItems.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [orderedItems[i], orderedItems[j]] = [orderedItems[j], orderedItems[i]];
+      }
+    }
 
     try {
       const parts: Array<
         { text: string } | { inlineData: { mimeType: string; data: string } }
       > = [];
 
-      for (const item of validItems) {
+      for (const item of orderedItems) {
         parts.push({
           text: `WARDROBE ITEM -> id="${item.id}" | category="${item.category}" | label="${item.label}"`,
         });
@@ -333,13 +331,16 @@ export function createApiApp(): express.Express {
 
       const prompt = [
         'You are a luxury personal stylist curating outfits strictly from a client’s REAL uploaded wardrobe.',
-        `Client Profile: Gender = ${genderLabel}, Season = ${season}, Preferred Aesthetic = ${aesthetic}.`,
+        `Client Profile: Gender = ${genderLabel}, Season Context = ${season}, Styling Direction = ${aesthetic}.`,
         anchorItemId
-          ? `Required Anchor Item: You MUST include item id="${anchorItemId}" in all 3 outfits.`
-          : 'You may mix and match across all uploaded items so the 3 outfits feel genuinely distinct.',
+          ? `Required Anchor Item: You MUST include item id="${anchorItemId}" in both outfits.`
+          : 'Mix and match creatively across the uploaded items so the 2 outfits feel genuinely distinct from each other.',
+        previousCombinations.length > 0
+          ? `FRESH VARIATION REQUEST: The client wants 2 NEW, DIFFERENT outfit combinations. Avoid repeating these previous outfits or exact piece pairings:\n- ${previousCombinations.join('\n- ')}`
+          : '',
         '',
         'STRICT RULES:',
-        '1. Create exactly 3 complete outfits in order for occasions: "Casual", "Business", and "Night Out".',
+        `1. Create exactly 2 distinct, complete outfits tailored to Season Context "${season}" and Styling Direction "${aesthetic}". Set each outfit's \`occasion\` to one of "Casual", "Business", or "Night Out" (choosing the 2 best contrasting occasions for the styling direction).`,
         '2. EVERY piece in every outfit’s `pieces` array MUST use an exact `wardrobeItemId` from the uploaded WARDROBE ITEM list above. NEVER invent, imagine, or add any garment, shoe, bag, watch, or accessory that the client did not upload.',
         '3. Whenever the client uploaded items across clothing (tops, dresses, outerwear, bottoms) AND accessories (shoes, bags, watches, eyewear/specs, accessories), assemble cohesive full-body looks combining clothing + shoes + bag/watch/specs.',
         '4. Never repeat the same `wardrobeItemId` twice inside the same outfit.',
@@ -347,7 +348,9 @@ export function createApiApp(): express.Express {
         '6. Assign each outfit `colorPaletteCategory` as one of: "Monochromatic", "Complementary", "Neutral Tones", or "Analogous".',
         '7. In `itemAnalysis.itemName`, give the client’s wardrobe capsule a refined editorial title (e.g. "Warm Neutral Menswear Capsule" or "Editorial Silk & Tailoring Edit").',
         '8. If a key slot (such as Shoes or Outerwear) was not uploaded at all, mention it politely in `missingNote`; otherwise set `missingNote` to an empty string "".',
-      ].join('\n');
+      ]
+        .filter(Boolean)
+        .join('\n');
 
       parts.push({ text: prompt });
 
@@ -355,8 +358,9 @@ export function createApiApp(): express.Express {
         model: 'gemini-4-hydrogen',
         contents: { parts },
         config: {
+          temperature: isFreshReroll ? 1.0 : 0.7,
           systemInstruction:
-            'Compose 3 stylish, practical outfits strictly from the exact uploaded wardrobeItemId values provided. Never invent unuploaded items. Return JSON only.',
+            'Compose 2 stylish, distinct outfits strictly from the exact uploaded wardrobeItemId values provided and tailored to the requested Season Context and Styling Direction. Never invent unuploaded items. Return JSON only.',
           responseMimeType: 'application/json',
           responseSchema: CLOSET_COMPOSE_SCHEMA,
           thinkingConfig: {
@@ -393,7 +397,7 @@ export function createApiApp(): express.Express {
       };
 
       const itemById = new Map(validItems.map((i) => [i.id, i]));
-      const sanitizedOutfits = (parsedJson.outfits ?? []).slice(0, 3).map((outfit, idx) => {
+      const sanitizedOutfits = (parsedJson.outfits ?? []).slice(0, 2).map((outfit, idx) => {
         const seen = new Set<string>();
         const cleanPieces = (outfit.pieces ?? []).filter((p) => {
           if (!p.wardrobeItemId || !itemById.has(p.wardrobeItemId)) return false;
@@ -738,12 +742,11 @@ export function createApiApp(): express.Express {
       return;
     }
     try {
-      const [analyses, savedLooks, voiceSessions] = await Promise.all([
+      const [analyses, savedLooks] = await Promise.all([
         listWardrobeAnalysesSql(req.dbUser.id),
         listSavedOutfitsSql(req.dbUser.id),
-        listVoiceSessionsSql(req.dbUser.id),
       ]);
-      res.json({ analyses, savedLooks, voiceSessions });
+      res.json({ analyses, savedLooks });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Unable to load wardrobe history.';
@@ -846,41 +849,6 @@ export function createApiApp(): express.Express {
       }
     },
   );
-
-  app.post('/api/wardrobe/voice-sessions', requireAuth, async (req: AuthRequest, res) => {
-    if (!req.dbUser) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const anchorItemName =
-      typeof req.body?.anchorItemName === 'string'
-        ? req.body.anchorItemName.trim().slice(0, 140)
-        : 'Wardrobe Consultation';
-    const voiceName =
-      typeof req.body?.voiceName === 'string'
-        ? req.body.voiceName.trim().slice(0, 32)
-        : 'Zephyr';
-    const transcriptSummary =
-      typeof req.body?.transcriptSummary === 'string'
-        ? req.body.transcriptSummary.trim().slice(0, 2000)
-        : null;
-    const durationSeconds = Number(req.body?.durationSeconds) || 0;
-
-    try {
-      const recorded = await recordVoiceSessionSql({
-        userId: req.dbUser.id,
-        anchorItemName,
-        voiceName,
-        transcriptSummary,
-        durationSeconds,
-      });
-      res.status(201).json({ session: recorded });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Unable to record voice session.';
-      res.status(500).json({ error: message });
-    }
-  });
 
   app.delete('/api/wardrobe/account', requireAuth, async (req: AuthRequest, res) => {
     if (!req.dbUser) {

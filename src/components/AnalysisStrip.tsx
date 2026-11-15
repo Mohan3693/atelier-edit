@@ -25,12 +25,12 @@ export function AnalysisStrip({ analysis, anchorImageUrl }: AnalysisStripProps) 
   return (
     <section
       aria-label="Garment palette and style analysis"
-      className="max-w-[1240px] mx-auto px-4 sm:px-6 py-8 sm:py-10 border-b border-[#E4E4E7]"
+      className="max-w-[1240px] mx-auto px-4 sm:px-6 py-8 sm:py-10 border-b border-[#E5E0D8]"
     >
-      <div className="bg-white border border-[#E4E4E7] rounded-2xl p-4 sm:p-8">
+      <div className="bg-white border border-[#E5E0D8] shadow-[0_2px_14px_-6px_rgba(25,24,22,0.08)] rounded-2xl p-4 sm:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
           <div className="lg:col-span-7 flex flex-row items-start gap-4 sm:gap-6">
-            <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl bg-[#F8F8F7] border border-[#EFEFEF] overflow-hidden shrink-0 flex items-center justify-center">
+            <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-xl bg-[#F9F8F5] border border-[#EFECE6] overflow-hidden shrink-0 flex items-center justify-center">
               <img
                 src={anchorImageUrl}
                 alt={analysis.itemName}
@@ -40,25 +40,25 @@ export function AnalysisStrip({ analysis, anchorImageUrl }: AnalysisStripProps) 
             </div>
 
             <div className="space-y-2 sm:space-y-3 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[#575652]">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[#5E5A54]">
                 <span>{analysis.category}</span>
                 <span aria-hidden="true">·</span>
                 <span>{analysis.stylePersonality}</span>
               </div>
-              <h2 className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight">
+              <h2 className="font-display text-2xl sm:text-3xl font-semibold text-[#191816] tracking-tight">
                 {analysis.itemName}
               </h2>
-              <p className="text-sm leading-relaxed text-[#575652]">
+              <p className="text-sm leading-relaxed text-[#5E5A54]">
                 {analysis.stylingStrategy}
               </p>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 pt-2 text-xs">
                 <div>
-                  <dt className="text-[#787772]">Silhouette</dt>
-                  <dd className="text-[#141413] font-medium mt-0.5">{analysis.silhouette}</dd>
+                  <dt className="text-[#78746D]">Silhouette</dt>
+                  <dd className="text-[#191816] font-medium mt-0.5">{analysis.silhouette}</dd>
                 </div>
                 <div>
-                  <dt className="text-[#787772]">Textile &amp; Pattern</dt>
-                  <dd className="text-[#141413] font-medium mt-0.5">
+                  <dt className="text-[#78746D]">Textile &amp; Pattern</dt>
+                  <dd className="text-[#191816] font-medium mt-0.5">
                     {analysis.fabricAndTexture}
                   </dd>
                 </div>
@@ -68,10 +68,10 @@ export function AnalysisStrip({ analysis, anchorImageUrl }: AnalysisStripProps) 
 
           <div className="lg:col-span-5 space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold tracking-wide text-[#575652]">
+              <h3 className="text-xs font-semibold tracking-wide text-[#5E5A54]">
                 Extracted Color Palette
               </h3>
-              <span className="text-xs text-[#787772]">Tap swatch to copy</span>
+              <span className="text-xs text-[#78746D]">Tap swatch to copy</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-2.5">
@@ -85,7 +85,7 @@ export function AnalysisStrip({ analysis, anchorImageUrl }: AnalysisStripProps) 
                     type="button"
                     onClick={() => handleCopyHex(hex)}
                     aria-label={`Copy ${swatch.name} color ${hex}`}
-                    className="group text-left rounded-lg overflow-hidden border border-[#E4E4E7] hover:border-[#141413] active:border-[#141413] transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#141413]"
+                    className="group text-left rounded-lg overflow-hidden border border-[#E5E0D8] hover:border-[#191816] active:border-[#191816] transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-[#191816]"
                   >
                     <div
                       className="h-11 px-2.5 flex items-end justify-between pb-1.5"
@@ -104,10 +104,10 @@ export function AnalysisStrip({ analysis, anchorImageUrl }: AnalysisStripProps) 
                       )}
                     </div>
                     <div className="px-2.5 py-2 bg-white">
-                      <span className="block text-xs font-medium text-[#141413] truncate">
+                      <span className="block text-xs font-medium text-[#191816] truncate">
                         {swatch.name}
                       </span>
-                      <span className="block text-[11px] text-[#787772]">
+                      <span className="block text-[11px] text-[#78746D]">
                         {isCopied ? 'Copied' : swatch.role}
                       </span>
                     </div>

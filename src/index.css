@@ -8,8 +8,8 @@
 
 @layer base {
   html {
-    background-color: #F8F8F7;
-    color: #141413;
+    background-color: #F4F1EC;
+    color: #191816;
     font-family: var(--font-sans);
     scroll-behavior: smooth;
     scroll-padding-top: 4.5rem;
@@ -19,6 +19,8 @@
 
   body {
     overflow-x: hidden;
+    background-color: #F4F1EC;
+    color: #191816;
   }
 
   button,
@@ -39,6 +41,14 @@
       transition-duration: 0.01ms !important;
     }
   }
+}
+
+.atelier-surface {
+  background-color: #F4F1EC;
+  background-image:
+    radial-gradient(ellipse 85% 48% at 50% -12%, rgba(142, 27, 53, 0.06), transparent 68%),
+    radial-gradient(circle at 90% 18%, rgba(198, 178, 152, 0.16), transparent 46%),
+    radial-gradient(circle at 8% 82%, rgba(178, 166, 150, 0.1), transparent 44%);
 }
 
 .font-display {

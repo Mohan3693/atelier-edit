@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from './index.ts';
-import { savedOutfitsSql, voiceSessions, wardrobeAnalyses } from './schema.ts';
+import { savedOutfitsSql, wardrobeAnalyses } from './schema.ts';
 
 export interface SaveOutfitSqlInput {
   userId: number;
@@ -128,44 +128,5 @@ export async function deleteSavedOutfitSql(userId: number, clientLookId: string)
   } catch (error) {
     console.error('Database query failed in deleteSavedOutfitSql:', error);
     throw new Error('Failed to remove saved outfit.', { cause: error });
-  }
-}
-
-export async function recordVoiceSessionSql(input: {
-  userId: number;
-  anchorItemName: string;
-  voiceName: string;
-  transcriptSummary?: string | null;
-  durationSeconds: number;
-}) {
-  try {
-    const rows = await db
-      .insert(voiceSessions)
-      .values({
-        userId: input.userId,
-        anchorItemName: input.anchorItemName,
-        voiceName: input.voiceName,
-        transcriptSummary: input.transcriptSummary ?? null,
-        durationSeconds: Math.max(0, Math.round(input.durationSeconds)),
-      })
-      .returning();
-    return rows[0];
-  } catch (error) {
-    console.error('Database query failed in recordVoiceSessionSql:', error);
-    throw new Error('Failed to record voice consultation.', { cause: error });
-  }
-}
-
-export async function listVoiceSessionsSql(userId: number, limit = 10) {
-  try {
-    return await db
-      .select()
-      .from(voiceSessions)
-      .where(eq(voiceSessions.userId, userId))
-      .orderBy(desc(voiceSessions.createdAt))
-      .limit(limit);
-  } catch (error) {
-    console.error('Database query failed in listVoiceSessionsSql:', error);
-    throw new Error('Failed to load voice consultations.', { cause: error });
   }
 }

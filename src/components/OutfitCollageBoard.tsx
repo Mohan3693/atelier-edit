@@ -42,7 +42,7 @@ export function OutfitCollageBoard({
     resolvedPieces.every((p) => !p.resolvedImg)
   ) {
     return (
-      <div className="relative w-full h-full bg-[#F8F8F7] overflow-hidden group">
+      <div className="relative w-full h-full bg-[#F9F8F5] overflow-hidden group">
         <img
           src={outfit.flatLayImageUrl}
           alt={`${outfit.occasion} look: ${outfit.title}`}
@@ -86,12 +86,12 @@ export function OutfitCollageBoard({
 
   return (
     <div
-      className={`relative w-full h-full bg-[#F5F4F0] ${
+      className={`relative w-full h-full bg-[#F6F3EE] ${
         compact ? 'p-2.5 gap-2' : 'p-3.5 sm:p-4 gap-2.5'
       } flex flex-col justify-between group`}
     >
-      <div className="flex items-center justify-between text-[11px] text-[#575652]">
-        <span className="font-semibold text-[#141413] truncate">
+      <div className="flex items-center justify-between text-[11px] text-[#5E5A54]">
+        <span className="font-semibold text-[#191816] truncate">
           {hasRealPieceImages ? 'Your Real Wardrobe Pairing' : 'Stylist Composition Board'}
         </span>
         <span className="tabular-nums shrink-0">{displayTiles.length} pieces</span>
@@ -115,7 +115,7 @@ export function OutfitCollageBoard({
           return (
             <div
               key={`${tile.slot}-${idx}`}
-              className={`${spanClass} bg-white border border-[#E4E4E7] rounded-xl overflow-hidden flex flex-col min-h-0`}
+              className={`${spanClass} bg-white border border-[#E5E0D8] rounded-xl overflow-hidden flex flex-col min-h-0`}
             >
               <div className="flex-1 min-h-0 bg-[#FAF9F6] flex items-center justify-center p-1.5 overflow-hidden">
                 {imgOk ? (
@@ -136,7 +136,7 @@ export function OutfitCollageBoard({
                     className="w-full h-full rounded-lg flex items-center justify-center p-2 text-center"
                     style={{ backgroundColor: `${hex}22` }}
                   >
-                    <span className="text-[11px] font-medium text-[#141413] line-clamp-2">
+                    <span className="text-[11px] font-medium text-[#191816] line-clamp-2">
                       {tile.name}
                     </span>
                   </div>
@@ -144,12 +144,12 @@ export function OutfitCollageBoard({
               </div>
 
               {!compact && (
-                <div className="px-2 py-1.5 border-t border-[#EFEFEF] bg-white flex items-center justify-between gap-1.5 shrink-0">
+                <div className="px-2 py-1.5 border-t border-[#EFECE6] bg-white flex items-center justify-between gap-1.5 shrink-0">
                   <div className="min-w-0">
-                    <span className="block text-[9px] font-medium text-[#787772] truncate">
+                    <span className="block text-[9px] font-medium text-[#78746D] truncate">
                       {tile.slot}
                     </span>
-                    <span className="block text-[11px] font-semibold text-[#141413] truncate">
+                    <span className="block text-[11px] font-semibold text-[#191816] truncate">
                       {tile.name}
                     </span>
                   </div>
@@ -172,7 +172,7 @@ export function OutfitCollageBoard({
             <button
               type="button"
               onClick={onDownloadPng}
-              className="min-h-10 sm:min-h-8 px-3 sm:px-2.5 py-1.5 rounded-lg sm:rounded-md bg-white border border-[#E4E4E7] text-xs sm:text-[11px] font-medium text-[#141413] hover:border-[#141413] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              className="min-h-10 sm:min-h-8 px-3 sm:px-2.5 py-1.5 rounded-lg sm:rounded-md bg-white border border-[#E5E0D8] text-xs sm:text-[11px] font-medium text-[#191816] hover:border-[#191816] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <Download className="w-3.5 h-3.5 sm:w-3 sm:h-3" aria-hidden="true" />
               Save Image
@@ -182,7 +182,7 @@ export function OutfitCollageBoard({
             <button
               type="button"
               onClick={onInspect}
-              className="ml-auto min-h-10 sm:min-h-8 px-3 sm:px-2.5 py-1.5 rounded-lg sm:rounded-md bg-[#141413] text-white text-xs sm:text-[11px] font-medium hover:bg-[#2C2C2A] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+              className="ml-auto min-h-10 sm:min-h-8 px-3 sm:px-2.5 py-1.5 rounded-lg sm:rounded-md bg-[#191816] text-white text-xs sm:text-[11px] font-medium hover:bg-[#312E2A] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <Maximize2 className="w-3.5 h-3.5 sm:w-3 sm:h-3" aria-hidden="true" />
               Inspect
